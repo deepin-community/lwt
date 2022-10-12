@@ -1,0 +1,24 @@
+@OCamlStdlibDir@/lwt/*dune*
+@OCamlStdlibDir@/lwt/*opam*
+@OCamlStdlibDir@/lwt/*.ml*
+@OCamlStdlibDir@/lwt/*.cmi
+@OCamlStdlibDir@/lwt/*.cmt*
+OPT: @OCamlStdlibDir@/lwt/*.a
+OPT: @OCamlStdlibDir@/lwt/*.cmx
+OPT: @OCamlStdlibDir@/lwt/*.cmxa
+@OCamlStdlibDir@/lwt/unix/*.h
+@OCamlStdlibDir@/lwt/unix/*.ml*
+@OCamlStdlibDir@/lwt/unix/*.cmi
+@OCamlStdlibDir@/lwt/unix/*.cmt*
+@OCamlStdlibDir@/lwt/unix/*.a
+OPT: @OCamlStdlibDir@/lwt/unix/*.cmx
+OPT: @OCamlStdlibDir@/lwt/unix/*.cmxa
+@OCamlStdlibDir@/lwt_ppx
+@OCamlStdlibDir@/lwt_react/*dune*
+@OCamlStdlibDir@/lwt_react/*opam*
+@OCamlStdlibDir@/lwt_react/*.ml*
+@OCamlStdlibDir@/lwt_react/*.cmi
+@OCamlStdlibDir@/lwt_react/*.cmt*
+OPT: @OCamlStdlibDir@/lwt_react/*.cmx
+OPT: @OCamlStdlibDir@/lwt_react/*.cmxa
+OPT: @OCamlStdlibDir@/lwt_react/*.a

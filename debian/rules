@@ -1,0 +1,40 @@
+#!/usr/bin/make -f
+# -*- makefile -*-
+
+# Uncomment this to turn on verbose mode.
+#export DH_VERBOSE=1
+
+DESTDIR=$(CURDIR)/debian/tmp
+
+include /usr/share/ocaml/ocamlvars.mk
+
+export OCAMLPATH := $(CURDIR)/_tmp$(OCAML_STDLIB_DIR)
+DUNE_INSTALL := dune install --destdir=$(CURDIR)/_tmp --prefix=/usr --libdir=..$(OCAML_STDLIB_DIR)
+
+%:
+	dh $@ --with ocaml
+
+override_dh_auto_build:
+	dune exec -p lwt src/unix/config/discover.exe -- --save --use-libev true
+	dune build -p lwt
+	$(DUNE_INSTALL) lwt
+	dune build -p lwt_ppx
+	$(DUNE_INSTALL) lwt_ppx
+	dune build -p lwt_react
+	$(DUNE_INSTALL) lwt_react
+	mkdir _tmp/tmp
+	cp debian/print_page_size.ml _tmp/tmp
+	( cd _tmp/tmp && ocamlfind ocamlc -thread -package lwt.unix -linkpkg -custom print_page_size.ml && ./a.out )
+	rm -rf _tmp/tmp
+
+override_dh_auto_test:
+ifeq (,$(filter nocheck,$(DEB_BUILD_OPTIONS)))
+	dune runtest -p lwt
+	dune runtest -p lwt_ppx
+	dune runtest -p lwt_react
+endif
+
+override_dh_auto_install:
+	rm -rf debian/tmp
+	cp -a $(CURDIR)/_tmp debian/tmp
+	rm -rf debian/tmp/usr/doc/lwt_ppx debian/tmp/usr/doc/lwt_react debian/tmp/usr/doc/lwt/LICENSE.md

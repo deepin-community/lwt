@@ -1,0 +1,9 @@
+@OCamlDllDir@
+@OCamlStdlibDir@/lwt/META
+@OCamlStdlibDir@/lwt/*.cma
+DYN: @OCamlStdlibDir@/lwt/*.cmxs
+@OCamlStdlibDir@/lwt/unix/*.cma
+DYN: @OCamlStdlibDir@/lwt/unix/*.cmxs
+@OCamlStdlibDir@/lwt_react/META
+@OCamlStdlibDir@/lwt_react/*.cma
+DYN: @OCamlStdlibDir@/lwt_react/*.cmxs

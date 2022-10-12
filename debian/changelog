@@ -1,0 +1,302 @@
+lwt (5.3.0-1) unstable; urgency=medium
+
+  * New upstream release
+
+ -- Stéphane Glondu <glondu@debian.org>  Sat, 22 Aug 2020 09:28:54 +0200
+
+lwt (5.1.1-4) unstable; urgency=medium
+
+  * Bump debhelper compat level to 13
+  * Add empty dh_dwz override to fix FTBFS
+
+ -- Stéphane Glondu <glondu@debian.org>  Mon, 27 Jul 2020 16:43:58 +0200
+
+lwt (5.1.1-3) unstable; urgency=medium
+
+  * Disable page_size test altogether
+  * Print page size at the end of override_dh_auto_build
+
+ -- Stéphane Glondu <glondu@debian.org>  Mon, 10 Feb 2020 09:14:23 +0100
+
+lwt (5.1.1-2) unstable; urgency=medium
+
+  * Tests: add 8192 as a possible page size
+
+ -- Stéphane Glondu <glondu@debian.org>  Mon, 10 Feb 2020 07:49:37 +0100
+
+lwt (5.1.1-1) unstable; urgency=medium
+
+  * New upstream release
+  * Bump Standards-Version to 4.5.0
+  * Add Rules-Requires-Root: no
+
+ -- Stéphane Glondu <glondu@debian.org>  Mon, 10 Feb 2020 06:12:36 +0100
+
+lwt (4.3.0-2) unstable; urgency=medium
+
+  * Comment out page_size test, which does not pass on all architectures
+
+ -- Stéphane Glondu <glondu@debian.org>  Mon, 11 Nov 2019 11:20:36 +0100
+
+lwt (4.3.0-1) unstable; urgency=medium
+
+  * New upstream release
+    - SSL bindings have been moved to a different package, drop binary
+      packages liblwt-ssl-ocaml{,-dev}
+    - drop liblwt-ocaml-doc which has been empty for a while
+
+ -- Stéphane Glondu <glondu@debian.org>  Fri, 08 Nov 2019 16:34:06 +0100
+
+lwt (2.7.1-7) unstable; urgency=medium
+
+  * Disable glib bindings
+
+ -- Stéphane Glondu <glondu@debian.org>  Tue, 20 Aug 2019 06:16:50 +0200
+
+lwt (2.7.1-6) unstable; urgency=medium
+
+  * Remove camlp4 and lib{text,fileutils}-ocaml-dev from Build-Depends
+    - doc is no longer built and tests are no longer run
+  * Bump Standards-Version to 4.4.0
+  * Bump debhelper compat level to 12
+
+ -- Stéphane Glondu <glondu@debian.org>  Mon, 05 Aug 2019 11:37:02 +0200
+
+lwt (2.7.1-5) unstable; urgency=high
+
+  * Force rebuild of all packages on buildds
+  * Update Vcs-*
+
+ -- Stéphane Glondu <glondu@debian.org>  Fri, 02 Aug 2019 10:06:11 +0200
+
+lwt (2.7.1-4) unstable; urgency=medium
+
+  * Disable two tests that hang or fail on arm64 (Closes: #878495)
+
+ -- Stéphane Glondu <glondu@debian.org>  Mon, 16 Oct 2017 10:32:50 +0200
+
+lwt (2.7.1-3) unstable; urgency=medium
+
+  * Properly fix installation on bytecode architectures (Closes:
+    #878236)
+
+ -- Stéphane Glondu <glondu@debian.org>  Fri, 13 Oct 2017 14:45:33 +0200
+
+lwt (2.7.1-2) unstable; urgency=medium
+
+  * Fix installation on bytecode architectures (Closes: #878236)
+
+ -- Stéphane Glondu <glondu@debian.org>  Thu, 12 Oct 2017 09:31:18 +0200
+
+lwt (2.7.1-1) unstable; urgency=medium
+
+  [ Stéphane Glondu ]
+  * New upstream release
+    - remove patch: there is no more manual to not build
+    - build-depend on libresult-ocaml-dev and cppo
+    - run tests (except unix_mcast)
+    - add lwt_{react,ssl,glib} findlib packages
+  * Update debian/watch
+  * Bump Standards-Version to 4.0.0
+
+  [ Nicolas Dandrimont ]
+  * d/control: remove myself from Uploaders
+
+ -- Stéphane Glondu <glondu@debian.org>  Mon, 09 Oct 2017 14:23:46 +0200
+
+lwt (2.5.2-2) unstable; urgency=medium
+
+  * Add ocamlbuild to Build-Depends
+
+ -- Stéphane Glondu <glondu@debian.org>  Sat, 22 Jul 2017 09:06:57 +0200
+
+lwt (2.5.2-1) unstable; urgency=medium
+
+  * New upstream release
+  * Fix package description, thanks to Justin B Rye (Closes: #787012)
+  * Update Vcs-*
+  * Update debian/copyright
+  * Bump debhelper compat to 9
+  * Bump Standards-Version to 3.9.8
+
+ -- Stéphane Glondu <glondu@debian.org>  Thu, 28 Jul 2016 10:40:19 +0200
+
+lwt (2.5.0+1-1) unstable; urgency=medium
+
+  * New upstream release
+    - remove patch Add-Unix.O_CLOEXEC-flag-to-Lwt_unix (applied upstream)
+    - add patch Fix-FTBFS
+    - add libppx-tools-ocaml-dev to Build-Depends
+    - build-depend on libssl-ocaml-dev (>= 0.5)
+  * Update debian/watch
+
+ -- Stéphane Glondu <glondu@debian.org>  Wed, 14 Oct 2015 22:44:52 +0200
+
+lwt (2.4.3-4) unstable; urgency=low
+
+  * Upload to unstable
+
+ -- Stéphane Glondu <glondu@debian.org>  Wed, 04 Dec 2013 23:30:43 +0100
+
+lwt (2.4.3-3) experimental; urgency=low
+
+  * debian/patches:
+    + Add Unix.O_CLOEXEC flag to Lwt_unix (for OCaml >= 4.01)
+
+ -- Stéphane Glondu <glondu@debian.org>  Sat, 09 Nov 2013 08:11:43 +0100
+
+lwt (2.4.3-2) experimental; urgency=low
+
+  * Compile with OCaml >= 4
+  * Update Vcs-*
+
+ -- Stéphane Glondu <glondu@debian.org>  Fri, 26 Jul 2013 22:03:43 +0200
+
+lwt (2.4.3-1) unstable; urgency=low
+
+  * New upstream release
+  * Use format version 1.0 in debian/copyright
+  * Bump Standards-Version to 3.9.4
+  * Upload to unstable
+
+ -- Stéphane Glondu <glondu@debian.org>  Thu, 09 May 2013 17:28:49 +0200
+
+lwt (2.4.2-1) experimental; urgency=low
+
+  * New upstream release
+
+ -- Stéphane Glondu <glondu@debian.org>  Fri, 07 Dec 2012 11:15:41 +0100
+
+lwt (2.3.2-1) unstable; urgency=low
+
+  * New upstream release
+    - remove fix-a-race-condition-in-Lwt_io.patch (applied upstream)
+    - remove fix-data-corruption-in-Lwt_io.patch (applied upstream)
+    - add Remove-buggy-dependencies-causing-FTBFS-on-no-natdyn.patch
+  * Update debian/watch
+
+ -- Stéphane Glondu <glondu@debian.org>  Sat, 31 Dec 2011 12:37:11 +0100
+
+lwt (2.3.1-1) unstable; urgency=low
+
+  * New upstream release
+    - patches removed because they were applied upstream:
+      Fix-FTBFS-on-hurd, Fix-link-order-in-library-detection-test
+    - new patches cherry-picked from upstream:
+      fix-a-race-condition-in-Lwt_io, fix-data-corruption-in-Lwt_io
+
+ -- Stéphane Glondu <glondu@debian.org>  Thu, 28 Jul 2011 22:54:23 +0200
+
+lwt (2.3.0-3) unstable; urgency=low
+
+  * Fix link order in library detection test (fixes FTBFS on Ubuntu)
+
+ -- Stéphane Glondu <glondu@debian.org>  Tue, 12 Jul 2011 09:09:39 +0200
+
+lwt (2.3.0-2) unstable; urgency=low
+
+  * Fix FTBFS on Hurd due to use of PATH_MAX and HOSTNAME_MAX
+
+ -- Nicolas Dandrimont <nicolas.dandrimont@crans.org>  Fri, 27 May 2011 01:16:15 +0200
+
+lwt (2.3.0-1) unstable; urgency=low
+
+  [ Stéphane Glondu ]
+  * New upstream release 2.2.1
+    - add dependency to libev-dev (Closes: #612768)
+  * Bump Standards-Version to 3.9.1
+  * Bump debhelper compatibility level to 8
+
+  [ Nicolas Dandrimont ]
+  * Update to upstream release 2.3.0
+  * Install the .cmxs and .cma files in the library packages
+  * Add package liblwt-ssl-ocaml (Cooperative OpenSSL bindings runtime)
+  * Install META in liblwt-ocaml (Closes: #587472)
+  * Bump Standards-Version to 3.9.2 (no changes)
+
+ -- Nicolas Dandrimont <nicolas.dandrimont@crans.org>  Sun, 24 Apr 2011 11:30:49 +0200
+
+lwt (2.1.1-1) unstable; urgency=low
+
+  * New upstream release (Closes: #580322)
+  * Add libfindlib-ocaml-dev to Build-Depends
+
+ -- Stéphane Glondu <glondu@debian.org>  Sun, 13 Jun 2010 11:33:56 +0200
+
+lwt (2.1.0-1) unstable; urgency=low
+
+  * New upstream release
+  * debian/control:
+    - bump priority to optional
+    - bump versioned build-dependency to libreact-ocaml-dev to ease
+      react transition
+    - bump Standards-Version to 3.8.4 (no changes)
+  * Switch source package to format 3.0 (quilt)
+
+ -- Stéphane Glondu <glondu@debian.org>  Fri, 23 Apr 2010 15:19:47 +0200
+
+lwt (2.0.0-1) unstable; urgency=low
+
+  * New upstream release
+  * Switch packaging to dh-ocaml 0.9
+  * Upload to unstable
+
+ -- Stéphane Glondu <glondu@debian.org>  Thu, 15 Oct 2009 23:58:46 +0200
+
+lwt (2.0.0~rc1-1) experimental; urgency=low
+
+  * New upstream release candidate
+  * Update debian/copyright
+
+ -- Stéphane Glondu <glondu@debian.org>  Fri, 25 Sep 2009 23:00:10 +0200
+
+lwt (1.1.0+darcs20090806-3) experimental; urgency=low
+
+  * Update my e-mail address, remove DMUA
+  * Fix META.in so that lwt exists on bytecode architectures
+    (Closes: #544316)
+
+ -- Stéphane Glondu <glondu@debian.org>  Sun, 30 Aug 2009 19:15:16 +0200
+
+lwt (1.1.0+darcs20090806-2) experimental; urgency=low
+
+  * Create a runtime package for liblwt-ocaml-dev
+  * Put documentation in its own architecture-independent package
+  * Split out liblwt-ocaml-dev into several binary packages to reflect
+    optional dependencies: liblwt-ssl-*, liblwt-glib-*
+
+ -- Stephane Glondu <steph@glondu.net>  Tue, 25 Aug 2009 01:51:47 +0200
+
+lwt (1.1.0+darcs20090806-1) experimental; urgency=low
+
+  * New upstream snapshot
+    - this version comes with an important API incompatibility regarding
+      Lwt.{wait,wakeup} and friends (breaks ocsigen)
+  * debian/control:
+    - move to section ocaml, update Standards-Version to 3.8.3
+    - add (build-)dependencies to lib{react,text,lablgtk2}-ocaml-dev,
+      ocaml-compiler-libs and camlp4
+  * Update watch file
+
+ -- Stephane Glondu <steph@glondu.net>  Thu, 20 Aug 2009 17:12:13 +0200
+
+lwt (1.1.0-3) unstable; urgency=low
+
+  * Add dependency on dh-ocaml
+  * Use ocaml.mk as "rules" file, instead of "class"
+  * Bump version of libssl-ocaml-dev in dependencies
+  * Set priority to extra
+
+ -- Stephane Glondu <steph@glondu.net>  Mon, 02 Mar 2009 21:30:53 +0100
+
+lwt (1.1.0-2) unstable; urgency=low
+
+  * Upload after erroneous removal from archive (no changes)
+
+ -- Stephane Glondu <steph@glondu.net>  Fri, 11 Jul 2008 13:20:06 +0200
+
+lwt (1.1.0-1) unstable; urgency=low
+
+  * Initial release (Closes: #487997)
+
+ -- Stephane Glondu <steph@glondu.net>  Fri, 27 Jun 2008 00:47:45 +0200

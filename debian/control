@@ -1,0 +1,69 @@
+Source: lwt
+Priority: optional
+Maintainer: Debian OCaml Maintainers <debian-ocaml-maint@lists.debian.org>
+Uploaders: Stéphane Glondu <glondu@debian.org>
+Build-Depends:
+ debhelper-compat (= 13),
+ dh-ocaml,
+ libev-dev,
+ ocaml-findlib,
+ ocaml-dune,
+ libdune-ocaml-dev,
+ cppo,
+ libfindlib-ocaml-dev,
+ libreact-ocaml-dev,
+ libresult-ocaml-dev,
+ libmmap-ocaml-dev,
+ libmigrate-parsetree-ocaml-dev (>= 1.5.0),
+ libppx-tools-versioned-ocaml-dev (>= 5.3.0),
+ libocplib-endian-ocaml-dev,
+ libseq-ocaml-dev,
+ ocaml-compiler-libs,
+ ocaml-nox
+Standards-Version: 4.5.0
+Rules-Requires-Root: no
+Section: ocaml
+Homepage: http://ocsigen.org/lwt
+Vcs-Browser: https://salsa.debian.org/ocaml-team/lwt
+Vcs-Git: https://salsa.debian.org/ocaml-team/lwt.git
+
+Package: liblwt-ocaml-dev
+Architecture: any
+Depends:
+ libev-dev,
+ ${ocaml:Depends},
+ ${shlibs:Depends},
+ ${misc:Depends}
+Provides: ${ocaml:Provides}
+Recommends:
+ liblwt-ocaml-doc,
+ ocaml-findlib
+Suggests:
+ liblwt-ssl-ocaml-dev,
+ liblwt-glib-ocaml-dev
+Breaks: ocsigen (<< 1.2.1)
+Description: cooperative light-weight thread library for OCaml
+ Lwt is a library for cooperative threads implemented in a monadic style.
+ Unlike preemptive threads, cooperative threads do not use a scheduler to
+ distribute processor time between threads. Instead, each thread must
+ announce that it wants to let the others run.
+ .
+ This package contains all the development stuff you need to use the
+ core Lwt OCaml library in your programs.
+
+Package: liblwt-ocaml
+Architecture: any
+Depends:
+ ${ocaml:Depends},
+ ${shlibs:Depends},
+ ${misc:Depends}
+Provides: ${ocaml:Provides}
+Replaces: liblwt-ocaml-dev (<< 2.3.0)
+Breaks: liblwt-ocaml-dev (<< 2.3.0)
+Description: cooperative light-weight thread library for OCaml (runtime)
+ Lwt is a library for cooperative threads implemented in a monadic style.
+ Unlike preemptive threads, cooperative threads do not use a scheduler to
+ distribute processor time between threads. Instead, each thread must
+ announce that it wants to let the others run.
+ .
+ This package contains runtime libraries for programs using core Lwt.
