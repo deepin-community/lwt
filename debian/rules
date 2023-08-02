@@ -9,7 +9,7 @@ DESTDIR=$(CURDIR)/debian/tmp
 include /usr/share/ocaml/ocamlvars.mk
 
 export OCAMLPATH := $(CURDIR)/_tmp$(OCAML_STDLIB_DIR)
-DUNE_INSTALL := dune install --destdir=$(CURDIR)/_tmp --prefix=/usr --libdir=..$(OCAML_STDLIB_DIR)
+DUNE_INSTALL := dune install --destdir=$(CURDIR)/_tmp --prefix=/usr --libdir=$(OCAML_STDLIB_DIR)
 
 %:
 	dh $@ --with ocaml

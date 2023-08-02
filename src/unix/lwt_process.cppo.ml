@@ -21,7 +21,7 @@ type redirection =
   | `FD_move of Unix.file_descr ]
 
 (* +-----------------------------------------------------------------+
-   | OS-depentent command spawning                                   |
+   | OS-dependent command spawning                                   |
    +-----------------------------------------------------------------+ *)
 
 type proc = {
@@ -36,7 +36,7 @@ let win32_get_fd fd redirection =
   | `Keep ->
     Some fd
   | `Dev_null ->
-    Some (Unix.openfile "nul" [Unix.O_RDWR] 0o666)
+    Some (Unix.openfile "nul" [Unix.O_RDWR; Unix.O_KEEPEXEC] 0o666)
   | `Close ->
     None
   | `FD_copy fd' ->
@@ -56,11 +56,12 @@ let win32_quote arg =
     Filename.quote arg
 
 let win32_spawn
-    (prog, args) env ?cwd
+    ?cwd
     ?(stdin:redirection=`Keep)
     ?(stdout:redirection=`Keep)
     ?(stderr:redirection=`Keep)
-    toclose =
+    (prog, args) env
+  =
   let cmdline = String.concat " " (List.map win32_quote (Array.to_list args)) in
   let env =
     match env with
@@ -82,7 +83,6 @@ let win32_spawn
       Bytes.set res ofs '\000';
       Some (Bytes.unsafe_to_string res)
   in
-  List.iter Unix.set_close_on_exec toclose;
   let stdin_fd  = win32_get_fd Unix.stdin stdin
   and stdout_fd = win32_get_fd Unix.stdout stdout
   and stderr_fd = win32_get_fd Unix.stderr stderr in
@@ -91,15 +91,15 @@ let win32_spawn
       (if prog = "" then None else Some prog) cmdline env cwd
       (stdin_fd, stdout_fd, stderr_fd)
   in
-  let close = function
-    | `FD_move fd ->
-      Unix.close fd
-    | _ ->
-      ()
+  let close fd fd' =
+    match fd with
+    | `FD_move _ | `Dev_null ->
+      Unix.close (match fd' with Some fd' -> fd' | _ -> assert false)
+    | _ -> ()
   in
-  close stdin;
-  close stdout;
-  close stderr;
+  close stdin stdin_fd;
+  close stdout stdout_fd;
+  close stderr stderr_fd;
   proc
 
 external win32_wait_job : Unix.file_descr -> int Lwt_unix.job =
@@ -122,35 +122,36 @@ let unix_redirect fd redirection = match redirection with
   | `Keep ->
     ()
   | `Dev_null ->
-    Unix.close fd;
-    let dev_null = Unix.openfile "/dev/null" [Unix.O_RDWR] 0o666 in
-    if fd <> dev_null then begin
-      Unix.dup2 dev_null fd;
-      Unix.close dev_null
-    end
+    let dev_null = Unix.openfile "/dev/null" [Unix.O_RDWR; Unix.O_KEEPEXEC] 0o666 in
+    Unix.dup2 ~cloexec:false dev_null fd;
+    Unix.close dev_null
   | `Close ->
     Unix.close fd
   | `FD_copy fd' ->
-    Unix.dup2 fd' fd
+    Unix.dup2 ~cloexec:false fd' fd
   | `FD_move fd' ->
-    Unix.dup2 fd' fd;
+    Unix.dup2 ~cloexec:false fd' fd;
     Unix.close fd'
 
+#if OCAML_VERSION >= (5, 0, 0)
+external unix_exit : int -> 'a = "caml_unix_exit"
+#else
 external unix_exit : int -> 'a = "unix_exit"
+#endif
 
 let unix_spawn
-    (prog, args) env ?cwd
+    ?cwd
     ?(stdin:redirection=`Keep)
     ?(stdout:redirection=`Keep)
     ?(stderr:redirection=`Keep)
-    toclose =
+    (prog, args) env
+  =
   let prog = if prog = "" && Array.length args > 0 then args.(0) else prog in
   match Lwt_unix.fork () with
   | 0 ->
     unix_redirect Unix.stdin stdin;
     unix_redirect Unix.stdout stdout;
     unix_redirect Unix.stderr stderr;
-    List.iter Unix.close toclose;
     begin
       try
         begin match cwd with
@@ -263,41 +264,38 @@ class virtual common timeout proc channels =
   end
 
 class process_none ?timeout ?env ?cwd ?stdin ?stdout ?stderr cmd =
-  let proc = spawn cmd env ?cwd ?stdin ?stdout ?stderr [] in
+  let proc = spawn cmd env ?cwd ?stdin ?stdout ?stderr in
   object
     inherit common timeout proc []
   end
 
 class process_in ?timeout ?env ?cwd ?stdin ?stderr cmd =
-  let stdout_r, stdout_w = Unix.pipe () in
-  let proc =
-    spawn cmd env ?cwd ?stdin ~stdout:(`FD_move stdout_w) ?stderr [stdout_r] in
-  let stdout = Lwt_io.of_unix_fd ~mode:Lwt_io.input stdout_r in
+  let stdout_r, stdout_w = Lwt_unix.pipe_in ~cloexec:true () in
+  let proc = spawn cmd env ?cwd ?stdin ~stdout:(`FD_move stdout_w) ?stderr in
+  let stdout = Lwt_io.of_fd ~mode:Lwt_io.input stdout_r in
   object
     inherit common timeout proc [cast_chan stdout]
     method stdout = stdout
   end
 
 class process_out ?timeout ?env ?cwd ?stdout ?stderr cmd =
-  let stdin_r, stdin_w = Unix.pipe () in
-  let proc =
-    spawn cmd env ?cwd ~stdin:(`FD_move stdin_r) ?stdout ?stderr [stdin_w] in
-  let stdin = Lwt_io.of_unix_fd ~mode:Lwt_io.output stdin_w in
+  let stdin_r, stdin_w = Lwt_unix.pipe_out ~cloexec:true () in
+  let proc = spawn cmd env ?cwd ~stdin:(`FD_move stdin_r) ?stdout ?stderr in
+  let stdin = Lwt_io.of_fd ~mode:Lwt_io.output stdin_w in
   object
     inherit common timeout proc [cast_chan stdin]
     method stdin = stdin
   end
 
 class process ?timeout ?env ?cwd ?stderr cmd =
-  let stdin_r, stdin_w = Unix.pipe ()
-  and stdout_r, stdout_w = Unix.pipe () in
+  let stdin_r, stdin_w = Lwt_unix.pipe_out ~cloexec:true ()
+  and stdout_r, stdout_w = Lwt_unix.pipe_in ~cloexec:true () in
   let proc =
     spawn
       cmd env ?cwd ~stdin:(`FD_move stdin_r) ~stdout:(`FD_move stdout_w) ?stderr
-      [stdin_w; stdout_r]
   in
-  let stdin = Lwt_io.of_unix_fd ~mode:Lwt_io.output stdin_w
-  and stdout = Lwt_io.of_unix_fd ~mode:Lwt_io.input stdout_r in
+  let stdin = Lwt_io.of_fd ~mode:Lwt_io.output stdin_w
+  and stdout = Lwt_io.of_fd ~mode:Lwt_io.input stdout_r in
   object
     inherit common timeout proc [cast_chan stdin; cast_chan stdout]
     method stdin = stdin
@@ -305,20 +303,19 @@ class process ?timeout ?env ?cwd ?stderr cmd =
   end
 
 class process_full ?timeout ?env ?cwd cmd =
-  let stdin_r, stdin_w = Unix.pipe ()
-  and stdout_r, stdout_w = Unix.pipe ()
-  and stderr_r, stderr_w = Unix.pipe () in
+  let stdin_r, stdin_w = Lwt_unix.pipe_out ~cloexec:true ()
+  and stdout_r, stdout_w = Lwt_unix.pipe_in ~cloexec:true ()
+  and stderr_r, stderr_w = Lwt_unix.pipe_in ~cloexec:true () in
   let proc =
     spawn
       cmd env ?cwd
       ~stdin:(`FD_move stdin_r)
       ~stdout:(`FD_move stdout_w)
       ~stderr:(`FD_move stderr_w)
-      [stdin_w; stdout_r; stderr_r]
   in
-  let stdin = Lwt_io.of_unix_fd ~mode:Lwt_io.output stdin_w
-  and stdout = Lwt_io.of_unix_fd ~mode:Lwt_io.input stdout_r
-  and stderr = Lwt_io.of_unix_fd ~mode:Lwt_io.input stderr_r in
+  let stdin = Lwt_io.of_fd ~mode:Lwt_io.output stdin_w
+  and stdout = Lwt_io.of_fd ~mode:Lwt_io.input stdout_r
+  and stderr = Lwt_io.of_fd ~mode:Lwt_io.input stderr_r in
   object
     inherit
       common timeout proc [cast_chan stdin; cast_chan stdout; cast_chan stderr]

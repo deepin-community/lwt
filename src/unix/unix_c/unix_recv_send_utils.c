@@ -64,14 +64,23 @@ value wrapper_recv_msg(int fd, int n_iovs, struct iovec *iovs)
 }
 
 value wrapper_send_msg(int fd, int n_iovs, struct iovec *iovs,
-                       value val_n_fds, value val_fds)
+                       value val_n_fds, value val_fds, value dest)
 {
-    CAMLparam2(val_n_fds, val_fds);
+    CAMLparam3(val_n_fds, val_fds, dest);
 
     struct msghdr msg;
     memset(&msg, 0, sizeof(msg));
     msg.msg_iov = iovs;
     msg.msg_iovlen = n_iovs;
+
+    if (Is_some(dest)) {
+      union sock_addr_union addr;
+      socklen_t addr_len;
+      get_sockaddr(Some_val(dest), &addr, &addr_len);
+
+      msg.msg_name = &addr.s_gen;
+      msg.msg_namelen = addr_len;
+    }
 
     int n_fds = Int_val(val_n_fds);
 #if defined(HAVE_FD_PASSING)
@@ -87,7 +96,7 @@ value wrapper_send_msg(int fd, int n_iovs, struct iovec *iovs,
         cm->cmsg_len = CMSG_LEN(n_fds * sizeof(int));
 
         int *fds = (int *)CMSG_DATA(cm);
-        for (; Is_block(val_fds); val_fds = Field(val_fds, 1), fds++)
+        for (/*nothing*/; val_fds != Val_emptylist; val_fds = Field(val_fds, 1), fds++)
             *fds = Int_val(Field(val_fds, 0));
     };
 #else

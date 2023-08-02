@@ -7,10 +7,9 @@
 
     @since 4.1.0 *)
 
-(** This module bridges the gap between
-    {{:https://caml.inria.fr/pub/docs/manual-ocaml/libref/Format.html} [Format]}
-    and {!Lwt}. Although it is not required, it is recommended to use this
-    module with the {{:http://erratique.ch/software/fmt} [Fmt]} library.
+(** This module bridges the gap between {!Stdlib.Format} and {!Lwt}.
+    Although it is not required, it is recommended to use this module
+    with the {{:http://erratique.ch/software/fmt} [Fmt]} library.
 
     Compared to regular formatting function, the main difference is that
     printing statements will now return promises instead of blocking.
@@ -18,15 +17,11 @@
 
 val printf : ('a, Format.formatter, unit, unit Lwt.t) format4 -> 'a
 (** Returns a promise that prints on the standard output.
-    Similar to
-    {{:https://caml.inria.fr/pub/docs/manual-ocaml/libref/Format.html#VALprintf}
-    [Format.printf]}. *)
+    Similar to {!Stdlib.Format.printf}. *)
 
 val eprintf : ('a, Format.formatter, unit, unit Lwt.t) format4 -> 'a
 (** Returns a promise that prints on the standard error.
-    Similar to
-    {{:https://caml.inria.fr/pub/docs/manual-ocaml/libref/Format.html#VALeprintf}
-    [Format.eprintf]}. *)
+    Similar to {!Stdlib.Format.eprintf}. *)
 
 (** {1 Formatters} *)
 
@@ -55,16 +50,14 @@ val stderr : formatter
 val make_formatter :
   commit:(unit -> unit Lwt.t) -> fmt:Format.formatter -> unit -> formatter
 (** [make_formatter ~commit ~fmt] creates a new lwt formatter based on the
-    {{:https://caml.inria.fr/pub/docs/manual-ocaml/libref/Format.html#TYPEformatter}
-    [Format.formatter]} [fmt]. The [commit] function will be called by the
+    {!Stdlib.Format.formatter} [fmt]. The [commit] function will be called by the
     printing functions to update the underlying channel.
 *)
 
 val get_formatter : formatter -> Format.formatter
-(** [get_formatter fmt] returns the underlying
-    {{:https://caml.inria.fr/pub/docs/manual-ocaml/libref/Format.html#TYPEformatter}
-    [Format.formatter]}. To access the underlying formatter during printing, it
-    isvrecommended to use [%t] and [%a].
+(** [get_formatter fmt] returns the underlying {!Stdlib.Format.formatter}.
+    To access the underlying formatter during printing, it
+    is recommended to use [%t] and [%a].
 *)
 
 (** {2 Printing} *)
@@ -82,10 +75,8 @@ val ikfprintf :
   formatter -> ('b, Format.formatter, unit, 'a) format4 -> 'b
 
 val flush : formatter -> unit Lwt.t
-(** [flush fmt] flushes the formatter (as with
-    {{:https://caml.inria.fr/pub/docs/manual-ocaml/libref/Format.html#VALpp_print_flush}
-    [Format.pp_print_flush]}) and
-    executes all the printing action on the underlying channel.
+(** [flush fmt] flushes the formatter (as with {!Stdlib.Format.pp_print_flush})
+    and executes all the printing action on the underlying channel.
 *)
 
 

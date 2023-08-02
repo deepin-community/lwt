@@ -9,7 +9,7 @@
 (** {2 Ppx extensions}
 
     This Ppx extension adds various syntactic shortcut for lwt programming.
-    It needs OCaml >= 4.02 and {{:https://github.com/alainfrisch/ppx_tools}ppx_tools}.
+    It needs {{:https://github.com/alainfrisch/ppx_tools}ppx_tools}.
 
     To use it, simply use the ocamlfind package [lwt_ppx].
 
@@ -41,7 +41,7 @@ and t2 = do_something2 in
 bind t1 (fun x -> bind t2 (fun y -> code))
    ]}
 
-   Due to a {{:https://caml.inria.fr/mantis/view.php?id=7758} bug} in the OCaml
+   Due to a {{:https://github.com/ocaml/ocaml/issues/7758} bug} in the OCaml
    parser, if you'd like to put a type constraint on the variable, please write
 
    {[
@@ -161,4 +161,4 @@ else
 *)
 
 
-val mapper : Migrate_parsetree.OCaml_410.Ast.Ast_mapper.mapper
+class mapper : Ppxlib.Ast_traverse.map

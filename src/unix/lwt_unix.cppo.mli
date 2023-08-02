@@ -6,13 +6,13 @@
 (** Cooperative system calls *)
 
 (** This modules maps system calls, like those of the standard
-    library's [Unix] module, to cooperative ones, which will not block
+    library's {!Unix} module, to cooperative ones, which will not block
     the program.
 
     The semantics of all operations is the following: if the action
     (for example reading from a {b file descriptor}) can be performed
-    immediately, it is done and returns immediately, otherwise it
-    returns a sleeping thread which is woken up when the operation
+    immediately, it is performed and returns an already resolved promise,
+    otherwise it returns a pending promise which is resolved when the operation
     completes.
 
     Most operations on sockets and pipes (on Windows it is only
@@ -42,25 +42,31 @@
 *)
 
 val handle_unix_error : ('a -> 'b Lwt.t) -> 'a -> 'b Lwt.t
-  (** Same as [Unix.handle_unix_error] but catches lwt-level
+  (** Same as {!Unix.handle_unix_error} but catches lwt-level
       exceptions *)
 
 (** {2 Sleeping} *)
 
 val sleep : float -> unit Lwt.t
-  (** [sleep d] is a thread that remains suspended for [d] seconds
-      and then terminates. *)
+  (** [sleep d] is a promise that remains in a pending state for [d] seconds
+      after which it is resolved with value [()]. *)
 
-val yield : unit -> unit Lwt.t
-  (** [yield ()] is a thread that suspends itself and then resumes
-      as soon as possible and terminates. *)
+val yield : unit -> unit Lwt.t [@@deprecated "Use Lwt.pause instead"]
+  (** [yield ()] is a promise in a pending state. It resumes itself as soon as
+      possible and resolves with value [()].
 
-val auto_yield : float -> (unit -> unit Lwt.t)
-  (** [auto_yield timeout] returns a function [f], and [f ()] has the following
+      @deprecated Since 5.5.0 [yield] is deprecated. Use the more general
+      {!Lwt.pause} instead. See {!Lwt_main.yield} for additional details. *)
+
+val auto_yield : float -> (unit -> unit Lwt.t) [@@deprecated "Use Lwt_unix.auto_pause instead"]
+(** @deprecated Since 5.5.0. Use {!auto_pause} instead. *)
+
+val auto_pause : float -> (unit -> unit Lwt.t)
+  (** [auto_pause timeout] returns a function [f], and [f ()] has the following
       behavior:
 
       - If it has been more than [timeout] seconds since the last time [f ()]
-        behaved like {!Lwt_unix.yield}, [f ()] calls {!Lwt_unix.yield}.
+        behaved like {!Lwt.pause}, [f ()] calls {!Lwt.pause}.
       - Otherwise, if it has been less than [timeout] seconds, [f ()] behaves
         like {!Lwt.return_unit}, i.e. it does not yield. *)
 
@@ -68,8 +74,12 @@ exception Timeout
   (** Exception raised by timeout operations *)
 
 val timeout : float -> 'a Lwt.t
-  (** [timeout d] is a thread that remains suspended for [d] seconds
-      and then fails with {!Timeout}. *)
+  (** [timeout d] is a promise that remains pending for [d] seconds
+      and then is rejected with {!Timeout}.
+
+      @raise Timeout
+      The promise [timeout d] is rejected with {!Timeout} unless it is
+      cancelled. *)
 
 val with_timeout : float -> (unit -> 'a Lwt.t) -> 'a Lwt.t
   (** [with_timeout d f] is a short-hand for:
@@ -77,14 +87,17 @@ val with_timeout : float -> (unit -> 'a Lwt.t) -> 'a Lwt.t
       {[
         Lwt.pick [Lwt_unix.timeout d; f ()]
       ]}
-  *)
 
-(** {2 Operation on file-descriptors} *)
+      @raise Timeout
+      The promise [with_timeout d f] raises {!Timeout} if the promise returned
+      by [f ()] takes more than [d] seconds to resolve. *)
+
+(** {2 Operations on file-descriptors} *)
 
 type file_descr
   (** The abstract type for {b file descriptor}s. A Lwt {b file
       descriptor} is a pair of a unix {b file descriptor} (of type
-      [Unix.file_descr]) and a {b state}.
+      {!Unix.file_descr}) and a {b state}.
 
       A {b file descriptor} may be:
 
@@ -104,20 +117,20 @@ type state =
           possible is {!close}, all others will fail. *)
 
 val state : file_descr -> state
-  (** [state fd] returns the state of [fd] *)
+  (** [state fd] returns the {!type:state} of [fd]. *)
 
 val unix_file_descr : file_descr -> Unix.file_descr
   (** Returns the underlying unix {b file descriptor}. It always
       succeeds, even if the {b file descriptor}'s state is not
-      [Open]. *)
+      [Opened]. *)
 
 val of_unix_file_descr : ?blocking : bool -> ?set_flags : bool -> Unix.file_descr -> file_descr
-(** Wraps a [Unix] file descriptor [fd] in an [Lwt_unix.file_descr] [fd'].
+(** Wraps a [Unix] file descriptor [fd] in an Lwt {!file_descr} [fd'].
 
     [~blocking] controls the {e internal} strategy Lwt uses to perform I/O on
     the underlying [fd]. Regardless of [~blocking], at the API level,
     [Lwt_unix.read], [Lwt_unix.write], etc. on [fd'] {e always} block the Lwt
-    thread, but {e never} block the whole process. However, for performance
+    promise, but {e never} block the whole process. However, for performance
     reasons, it is important that [~blocking] match the actual blocking mode of
     [fd].
 
@@ -148,7 +161,7 @@ val blocking : file_descr -> bool Lwt.t
 (** [blocking fd] indicates whether Lwt is internally using blocking or
     non-blocking I/O with [fd].
 
-    Note that this may differ from the blocking mode of the underlying [Unix]
+    Note that this may differ from the blocking mode of the underlying Unix
     file descriptor (i.e. [unix_file_descr fd]).
 
     See {!of_unix_file_descr} for details. *)
@@ -180,18 +193,26 @@ val abort : file_descr -> exn -> unit
 (** {2 Process handling} *)
 
 val fork : unit -> int
-  (** [fork ()] does the same as [Unix.fork]. You must use this
-      function instead of [Unix.fork] when you want to use Lwt in the
-      child process.
+  (** [fork ()] does the same as {!Unix.fork}. You must use this
+      function instead of {!Unix.fork} when you want to use Lwt in the
+      child process, even if you have not started using Lwt before the fork.
 
       Notes:
-      - in the child process all pending jobs are canceled,
-      - if you are going to use Lwt in the parent and the child, it is
+
+      - In the child process all pending [Lwt_unix] I/O jobs are abandoned.
+        This may cause the child's copy of their associated promises to remain
+        forever pending.
+      - If you are going to use Lwt in the parent and the child, it is
         a good idea to call {!Lwt_io.flush_all} before callling
         {!fork} to avoid double-flush.
-      - otherwise, if you will not use Lwt in the child, call
+      - Otherwise, if you will not use Lwt in the child, call
         {!Lwt_main.Exit_hooks.remove_all} to avoid Lwt calling {!Lwt_main.run}
-        during process exit. *)
+        during process exit.
+      - None of the above is necessary if you intend to call [exec]. Indeed, in
+        that case, it is not even necessary to use [Lwt_unix.fork]. You can use
+        {!Unix.fork}.
+      - To abandon some more promises, see
+        {!Lwt_main.abandon_yielded_and_paused}. *)
 
 type process_status =
     Unix.process_status =
@@ -205,13 +226,12 @@ type wait_flag =
   | WUNTRACED
 
 val wait : unit -> (int * process_status) Lwt.t
-  (** Wrapper for [Unix.wait] *)
+  (** Wrapper for {!Unix.wait} *)
 
 val waitpid : wait_flag list -> int -> (int * process_status) Lwt.t
-(** A promise-returning analog to
-    {{: https://caml.inria.fr/pub/docs/manual-ocaml/libref/Unix.html#VALwaitpid}
-    [Unix.waitpid]}. This call is non-blocking on Unix-like systems, but is
-    always blocking on Windows. *)
+(** A promise-returning analog to {!Unix.waitpid}. This call is
+    non-blocking on Unix-like systems, but is always blocking on
+    Windows. *)
 
 (** Resource usages *)
 type resource_usage = {
@@ -230,7 +250,7 @@ val wait4 : wait_flag list -> int -> (int * process_status * resource_usage) Lwt
       On windows it will always returns [{ utime = 0.0; stime = 0.0 }]. *)
 
 val wait_count : unit -> int
-  (** Returns the number of threads waiting for a child to
+  (** Returns the number of promises waiting for a child process to
       terminate. *)
 
 val system : string -> process_status Lwt.t
@@ -242,14 +262,13 @@ val system : string -> process_status Lwt.t
 (** {2 Basic file input/output} *)
 
 val stdin : file_descr
-  (** The standard {b file descriptor} for input. This one is usually
-      a terminal is the program is started from a terminal. *)
+  (** The {b file descriptor} for standard input. *)
 
 val stdout : file_descr
-  (** The standard {b file descriptor} for output *)
+  (** The {b file descriptor} for standard output. *)
 
 val stderr : file_descr
-  (** The standard {b file descriptor} for printing error messages *)
+  (** The {b file descriptor} for standard error. *)
 
 type file_perm = Unix.file_perm
 
@@ -269,12 +288,10 @@ type open_flag =
   | O_RSYNC
   | O_SHARE_DELETE
   | O_CLOEXEC
-#if OCAML_VERSION >= (4, 05, 0)
   | O_KEEPEXEC
-#endif
 
 val openfile : string -> open_flag list -> file_perm -> file_descr Lwt.t
-  (** Wrapper for [Unix.openfile]. *)
+  (** Wrapper for {!Unix.openfile}. *)
 
 val close : file_descr -> unit Lwt.t
   (** Close a {b file descriptor}. This close the underlying unix {b
@@ -283,18 +300,18 @@ val close : file_descr -> unit Lwt.t
 val read : file_descr -> bytes -> int -> int -> int Lwt.t
 (** [read fd buf ofs len] reads up to [len] bytes from [fd], and writes them to
     [buf], starting at offset [ofs]. The function immediately evaluates to an
-    Lwt thread, which waits for the operation to complete. If it completes
-    successfully, the thread indicates the number of bytes actually read, or
+    Lwt promise which waits for the operation to complete. If it completes
+    successfully, the promise resolves to the number of bytes actually read, or
     zero if the end of file has been reached.
 
-    Note that the Lwt thread waits for data (or end of file) even if the
+    Note that the Lwt promise waits for data (or end of file) even if the
     underlying file descriptor is in non-blocking mode. See
     {!of_unix_file_descr} for a discussion of non-blocking I/O and Lwt.
 
     If Lwt is using blocking I/O on [fd], [read] writes data into a temporary
     buffer, then copies it into [buf].
 
-    The thread can fail with any exception that can be raised by [Unix.read],
+    The promise can be rejected with any exception that can be raised by {!Unix.read},
     except [Unix.Unix_error Unix.EAGAIN], [Unix.Unix_error Unix.EWOULDBLOCK] or
     [Unix.Unix_error Unix.EINTR]. *)
 
@@ -306,24 +323,24 @@ val pread : file_descr -> bytes -> file_offset:int -> int -> int -> int Lwt.t
     On Unix systems, the file descriptor position is unaffected. On Windows
     it is changed to be just after the last read position.
 
-    The thread can fail with any exception that can be raised by [read] or
-    [lseek]. *)
+    The promise can be rejected with any exception that can be raised by [read]
+    or [lseek]. *)
 
 val write : file_descr -> bytes -> int -> int -> int Lwt.t
 (** [write fd buf ofs len] writes up to [len] bytes to [fd] from [buf], starting
-    at buffer offset [ofs]. The function immediately evaluates to an Lwt thread,
+    at buffer offset [ofs]. The function immediately evaluates to an Lwt promise
     which waits for the operation to complete. If the operation completes
-    successfully, the thread indicates the number of bytes actually written,
+    successfully, the promise resolves to the number of bytes actually written,
     which may be less than [len].
 
-    Note that the Lwt thread waits to write even if the underlying file
+    Note that the Lwt promise waits to write even if the underlying file
     descriptor is in non-blocking mode. See {!of_unix_file_descr} for a
     discussion of non-blocking I/O and Lwt.
 
     If Lwt is using blocking I/O on [fd], [buf] is copied before writing.
 
-    The thread can fail with any exception that can be raised by
-    [Unix.single_write], except [Unix.Unix_error Unix.EAGAIN],
+    The promise can be rejected with any exception that can be raised by
+    {!Unix.single_write}, except [Unix.Unix_error Unix.EAGAIN],
     [Unix.Unix_error Unix.EWOULDBLOCK] or [Unix.Unix_error Unix.EINTR]. *)
 
 val pwrite : file_descr -> bytes -> file_offset:int -> int -> int -> int Lwt.t
@@ -335,8 +352,8 @@ val pwrite : file_descr -> bytes -> file_offset:int -> int -> int -> int Lwt.t
     On Unix systems, the file descriptor position is unaffected. On Windows
     it is changed to be just after the last written position.
 
-    The thread can fail with any exception that can be raised by [write] or
-    [lseek]. *)
+    The promise can be rejected with any exception that can be raised by [write]
+    or [lseek]. *)
 
 val write_string : file_descr -> string -> int -> int -> int Lwt.t
   (** See {!write}. *)
@@ -399,15 +416,15 @@ end
 
 val readv : file_descr -> IO_vectors.t -> int Lwt.t
 (** [readv fd vs] reads bytes from [fd] into the buffer slices [vs]. If the
-    operation completes successfully, the resulting thread indicates the number
-    of bytes read.
+    operation completes successfully, the resulting promise resolves to the
+    number of bytes read.
 
     Data is always read directly into [Bigarray] slices. If the Unix file
     descriptor underlying [fd] is in non-blocking mode, data is also read
     directly into [bytes] slices. Otherwise, data for [bytes] slices is first
     read into temporary buffers, then copied.
 
-    Note that the returned Lwt thread is blocked until failure or a successful
+    Note that the returned Lwt promise is pending until failure or a successful
     read, even if the underlying file descriptor is in non-blocking mode. See
     {!of_unix_file_descr} for a discussion of non-blocking I/O and Lwt.
 
@@ -425,13 +442,13 @@ val readv : file_descr -> IO_vectors.t -> int Lwt.t
 val writev : file_descr -> IO_vectors.t -> int Lwt.t
 (** [writev fd vs] writes the bytes in the buffer slices [vs] to the file
     descriptor [fd]. If the operation completes successfully, the resulting
-    thread indicates the number of bytes written.
+    promise resolves to the number of bytes written.
 
     If the Unix file descriptor underlying [fd] is in non-blocking mode,
     [writev] does not make a copy the bytes before writing. Otherwise, it copies
     [bytes] slices, but not [Bigarray] slices.
 
-    Note that the returned Lwt thread is blocked until failure or a successful
+    Note that the returned Lwt promise is pending until failure or a successful
     write, even if the underlying descriptor is in non-blocking mode. See
     {!of_unix_file_descr} for a discussion of non-blocking I/O and Lwt.
 
@@ -461,7 +478,7 @@ val writable : file_descr -> bool
       writable. *)
 
 val wait_read : file_descr -> unit Lwt.t
-  (** Waits (without blocking other threads) until there is something
+  (** Waits (without blocking other promises) until there is something
       to read from the file descriptor.
 
       Note that you don't need to use this function if you are
@@ -472,7 +489,7 @@ val wait_read : file_descr -> unit Lwt.t
       existing libraries that are known to be blocking. *)
 
 val wait_write : file_descr -> unit Lwt.t
-  (** Waits (without blocking other threads) until it is possible to
+  (** Waits (without blocking other promises) until it is possible to
       write on the file descriptor.
 
       Note that you don't need to use this function if you are
@@ -492,13 +509,13 @@ type seek_command =
   | SEEK_END
 
 val lseek : file_descr -> int -> seek_command -> int Lwt.t
-  (** Wrapper for [Unix.lseek] *)
+  (** Wrapper for {!Unix.lseek} *)
 
 val truncate : string -> int -> unit Lwt.t
-  (** Wrapper for [Unix.truncate] *)
+  (** Wrapper for {!Unix.truncate} *)
 
 val ftruncate : file_descr -> int -> unit Lwt.t
-  (** Wrapper for [Unix.ftruncate] *)
+  (** Wrapper for {!Unix.ftruncate} *)
 
 (** {2 Syncing} *)
 
@@ -542,27 +559,25 @@ type stats =
     }
 
 val stat : string -> stats Lwt.t
-  (** Wrapper for [Unix.stat] *)
+  (** Wrapper for {!Unix.stat} *)
 
 val lstat : string -> stats Lwt.t
-  (** Wrapper for [Unix.lstat] *)
+  (** Wrapper for {!Unix.lstat} *)
 
 val fstat : file_descr -> stats Lwt.t
-  (** Wrapper for [Unix.fstat] *)
+  (** Wrapper for {!Unix.fstat} *)
 
 val file_exists : string -> bool Lwt.t
   (** [file_exists name] tests if a file named [name] exists.
 
       Note that [file_exists] behaves similarly to
-      {{:http://caml.inria.fr/pub/docs/manual-ocaml/libref/Sys.html#VALfile_exists}
-      [Sys.file_exists]}:
+      {!Sys.file_exists}:
 
-      - "file" is interpreted as "directory entry" in this context
+      - “file” is interpreted as “directory entry” in this context
 
       - [file_exists name] will return [false] in
         circumstances that would make {!stat} raise a
-        {{:http://caml.inria.fr/pub/docs/manual-ocaml/libref/Unix.html#EXCEPTIONUnix_error}
-        [Unix.Unix_error]} exception.
+        {!Unix.Unix_error} exception.
      *)
 
 val utimes : string -> float -> float -> unit Lwt.t
@@ -570,27 +585,25 @@ val utimes : string -> float -> float -> unit Lwt.t
     file at [path]. The access time is set to [atime] and the modification time
     to [mtime]. To set both to the current time, call [utimes path 0. 0.].
 
-    This function corresponds to
-    {{:http://caml.inria.fr/pub/docs/manual-ocaml/libref/Unix.html#VALutimes}
-    [Unix.utimes]}. See also
+    This function corresponds to {!Unix.utimes}. See also
     {{:http://man7.org/linux/man-pages/man3/utimes.3p.html} [utimes(3p)]}.
 
     @since 2.6.0 *)
 
 val isatty : file_descr -> bool Lwt.t
-  (** Wrapper for [Unix.isatty] *)
+  (** Wrapper for {!Unix.isatty} *)
 
 (** {2 File operations on large files} *)
 
 module LargeFile : sig
   val lseek : file_descr -> int64 -> seek_command -> int64 Lwt.t
-    (** Wrapper for [Unix.LargeFile.lseek] *)
+    (** Wrapper for {!Unix.LargeFile.lseek} *)
 
   val truncate : string -> int64 -> unit Lwt.t
-    (** Wrapper for [Unix.LargeFile.truncate] *)
+    (** Wrapper for {!Unix.LargeFile.truncate} *)
 
   val ftruncate : file_descr -> int64 -> unit Lwt.t
-    (** Wrapper for [Unix.LargeFile.ftruncate] *)
+    (** Wrapper for {!Unix.LargeFile.ftruncate} *)
 
   type stats =
       Unix.LargeFile.stats =
@@ -610,54 +623,52 @@ module LargeFile : sig
       }
 
   val stat : string -> stats Lwt.t
-    (** Wrapper for [Unix.LargeFile.stat] *)
+    (** Wrapper for {!Unix.LargeFile.stat} *)
 
   val lstat : string -> stats Lwt.t
-    (** Wrapper for [Unix.LargeFile.lstat] *)
+    (** Wrapper for {!Unix.LargeFile.lstat} *)
 
   val fstat : file_descr -> stats Lwt.t
-    (** Wrapper for [Unix.LargeFile.fstat] *)
+    (** Wrapper for {!Unix.LargeFile.fstat} *)
 
   val file_exists : string -> bool Lwt.t
     (** [file_exists name] tests if a file named [name] exists.
 
         Note that [file_exists] behaves similarly to
-        {{:http://caml.inria.fr/pub/docs/manual-ocaml/libref/Sys.html#VALfile_exists}
-        [Sys.file_exists]}:
+        {!Sys.file_exists}:
 
-        - "file" is interpreted as "directory entry" in this context
+        - “file” is interpreted as “directory entry” in this context
 
         - [file_exists name] will return [false] in
           circumstances that would make {!stat} raise a
-          {{:http://caml.inria.fr/pub/docs/manual-ocaml/libref/Unix.html#EXCEPTIONUnix_error}
-          [Unix.Unix_error]} exception.
+          {!Unix.Unix_error} exception.
      *)
 end
 
 (** {2 Operations on file names} *)
 
 val unlink : string -> unit Lwt.t
-  (** Wrapper for [Unix.unlink] *)
+  (** Wrapper for {!Unix.unlink} *)
 
 val rename : string -> string -> unit Lwt.t
-  (** Wrapper for [Unix.rename] *)
+  (** Wrapper for {!Unix.rename} *)
 
 val link : string -> string -> unit Lwt.t
-  (** Wrapper for [Unix.link] *)
+  (** Wrapper for {!Unix.link} *)
 
 (** {2 File permissions and ownership} *)
 
 val chmod : string -> file_perm -> unit Lwt.t
-  (** Wrapper for [Unix.chmod] *)
+  (** Wrapper for {!Unix.chmod} *)
 
 val fchmod : file_descr -> file_perm -> unit Lwt.t
-  (** Wrapper for [Unix.fchmod] *)
+  (** Wrapper for {!Unix.fchmod} *)
 
 val chown : string -> int -> int -> unit Lwt.t
-  (** Wrapper for [Unix.chown] *)
+  (** Wrapper for {!Unix.chown} *)
 
 val fchown : file_descr -> int -> int -> unit Lwt.t
-  (** Wrapper for [Unix.fchown] *)
+  (** Wrapper for {!Unix.fchown} *)
 
 type access_permission =
     Unix.access_permission =
@@ -667,55 +678,54 @@ type access_permission =
   | F_OK
 
 val access : string -> access_permission list -> unit Lwt.t
-  (** Wrapper for [Unix.access] *)
+  (** Wrapper for {!Unix.access} *)
 
 (** {2 Operations on file descriptors} *)
 
-val dup : file_descr -> file_descr
-  (** Wrapper for [Unix.dup] *)
+val dup : ?cloexec:bool ->
+          file_descr -> file_descr
+  (** Wrapper for {!Unix.dup} *)
 
-val dup2 : file_descr -> file_descr -> unit
-  (** Wrapper for [Unix.dup2] *)
+val dup2 : ?cloexec:bool ->
+           file_descr -> file_descr -> unit
+  (** Wrapper for {!Unix.dup2} *)
 
 val set_close_on_exec : file_descr -> unit
-  (** Wrapper for [Unix.set_close_on_exec] *)
+  (** Wrapper for {!Unix.set_close_on_exec} *)
 
 val clear_close_on_exec : file_descr -> unit
-  (** Wrapper for [Unix.clear_close_on_exec] *)
+  (** Wrapper for {!Unix.clear_close_on_exec} *)
 
 (** {2 Directories} *)
 
 val mkdir : string -> file_perm -> unit Lwt.t
-  (** Wrapper for [Unix.mkdir] *)
+  (** Wrapper for {!Unix.mkdir} *)
 
 val rmdir : string -> unit Lwt.t
-  (** Wrapper for [Unix.rmdir] *)
+  (** Wrapper for {!Unix.rmdir} *)
 
 val chdir : string -> unit Lwt.t
-  (** Wrapper for [Unix.chdir] *)
+  (** Wrapper for {!Unix.chdir} *)
 
 val getcwd : unit -> string Lwt.t
-(** Wrapper for [Unix.getcwd]
+(** Wrapper for {!Unix.getcwd}
 
     @since 3.1.0 *)
 
 val chroot : string -> unit Lwt.t
-  (** Wrapper for [Unix.chroot] *)
+  (** Wrapper for {!Unix.chroot} *)
 
 type dir_handle = Unix.dir_handle
 
 val opendir : string -> dir_handle Lwt.t
 (** Opens a directory for listing. Directories opened with this function must be
     explicitly closed with {!closedir}. This is a cooperative analog of
-    {{:http://caml.inria.fr/pub/docs/manual-ocaml/libref/Unix.html#VALopendir}
-    [Unix.opendir]}. *)
+    {!Unix.opendir}. *)
 
 val readdir : dir_handle -> string Lwt.t
 (** Reads the next directory entry from the given directory. Special entries
     such as [.] and [..] are included. If all entries have been read, raises
-    [End_of_file]. This is a cooperative analog of
-    {{:http://caml.inria.fr/pub/docs/manual-ocaml/libref/Unix.html#VALreaddir}
-    [Unix.readdir]}. *)
+    [End_of_file]. This is a cooperative analog of {!Unix.readdir}. *)
 
 val readdir_n : dir_handle -> int -> string array Lwt.t
   (** [readdir_n handle count] reads at most [count] entries from the
@@ -726,14 +736,10 @@ val readdir_n : dir_handle -> int -> string array Lwt.t
 
 val rewinddir : dir_handle -> unit Lwt.t
 (** Resets the given directory handle, so that directory listing can be
-    restarted. Cooperative analog of
-    {{:http://caml.inria.fr/pub/docs/manual-ocaml/libref/Unix.html#VALrewinddir}
-    [Unix.rewinddir]}. *)
+    restarted. Cooperative analog of {!Unix.rewinddir}. *)
 
 val closedir : dir_handle -> unit Lwt.t
-(** Closes a directory handle. Cooperative analog of
-    {{:http://caml.inria.fr/pub/docs/manual-ocaml/libref/Unix.html#VALclosedir}
-    [Unix.closedir]}. *)
+(** Closes a directory handle. Cooperative analog of {!Unix.closedir}. *)
 
 val files_of_directory : string -> string Lwt_stream.t
   (** [files_of_directory dir] returns the stream of all files of
@@ -741,30 +747,33 @@ val files_of_directory : string -> string Lwt_stream.t
 
 (** {2 Pipes and redirections} *)
 
-val pipe : unit -> file_descr * file_descr
-  (** [pipe ()] creates pipe using [Unix.pipe] and returns two lwt {b
+val pipe : ?cloexec:bool ->
+           unit -> file_descr * file_descr
+  (** [pipe ()] creates pipe using {!Unix.pipe} and returns two lwt {b
       file descriptor}s created from unix {b file_descriptor} *)
 
-val pipe_in : unit -> file_descr * Unix.file_descr
+val pipe_in : ?cloexec:bool ->
+              unit -> file_descr * Unix.file_descr
   (** [pipe_in ()] is the same as {!pipe} but maps only the unix {b
       file descriptor} for reading into a lwt one. The second is not
       put into non-blocking mode. You usually want to use this before
       forking to receive data from the child process. *)
 
-val pipe_out : unit -> Unix.file_descr * file_descr
+val pipe_out : ?cloexec:bool ->
+               unit -> Unix.file_descr * file_descr
   (** [pipe_out ()] is the inverse of {!pipe_in}. You usually want to
       use this before forking to send data to the child process *)
 
 val mkfifo : string -> file_perm -> unit Lwt.t
-  (** Wrapper for [Unix.mkfifo] *)
+  (** Wrapper for {!Unix.mkfifo} *)
 
 (** {2 Symbolic links} *)
 
-val symlink : string -> string -> unit Lwt.t
-  (** Wrapper for [Unix.symlink] *)
+val symlink : ?to_dir:bool -> string -> string -> unit Lwt.t
+  (** Wrapper for {!Unix.symlink} *)
 
 val readlink : string -> string Lwt.t
-  (** Wrapper for [Unix.readlink] *)
+  (** Wrapper for {!Unix.readlink} *)
 
 (** {2 Locking} *)
 
@@ -778,7 +787,7 @@ type lock_command =
   | F_TRLOCK
 
 val lockf : file_descr -> lock_command -> int -> unit Lwt.t
-  (** Wrapper for [Unix.lockf] *)
+  (** Wrapper for {!Unix.lockf} *)
 
 (** {2 User id, group id} *)
 
@@ -804,19 +813,19 @@ type group_entry =
   }
 
 val getlogin : unit -> string Lwt.t
-  (** Wrapper for [Unix.getlogin] *)
+  (** Wrapper for {!Unix.getlogin} *)
 
 val getpwnam : string -> passwd_entry Lwt.t
-  (** Wrapper for [Unix.getpwnam] *)
+  (** Wrapper for {!Unix.getpwnam} *)
 
 val getgrnam : string -> group_entry Lwt.t
-  (** Wrapper for [Unix.getgrnam] *)
+  (** Wrapper for {!Unix.getgrnam} *)
 
 val getpwuid : int -> passwd_entry Lwt.t
-  (** Wrapper for [Unix.getpwuid] *)
+  (** Wrapper for {!Unix.getpwuid} *)
 
 val getgrgid : int -> group_entry Lwt.t
-  (** Wrapper for [Unix.getgrgid] *)
+  (** Wrapper for {!Unix.getgrgid} *)
 
 (** {2 Signals} *)
 
@@ -864,32 +873,34 @@ type socket_type =
 
 type sockaddr = Unix.sockaddr = ADDR_UNIX of string | ADDR_INET of inet_addr * int
 
-val socket : socket_domain -> socket_type -> int -> file_descr
-  (** [socket domain type proto] is the same as [Unix.socket] but maps
+val socket : ?cloexec:bool ->
+             socket_domain -> socket_type -> int -> file_descr
+  (** [socket domain type proto] is the same as {!Unix.socket} but maps
       the result into a lwt {b file descriptor} *)
 
-val socketpair : socket_domain -> socket_type -> int -> file_descr * file_descr
-  (** Wrapper for [Unix.socketpair] *)
+val socketpair : ?cloexec:bool ->
+                 socket_domain -> socket_type -> int -> file_descr * file_descr
+  (** Wrapper for {!Unix.socketpair} *)
 
 val bind : file_descr -> sockaddr -> unit Lwt.t
 (** Binds an address to the given socket. This is the cooperative analog of
-    {{:http://caml.inria.fr/pub/docs/manual-ocaml/libref/Unix.html#VALbind}
-    [Unix.bind]}. See also
+    {!Unix.bind}. See also
     {{:http://man7.org/linux/man-pages/man3/bind.3p.html} [bind(3p)]}.
 
     @since 3.0.0 *)
 
 val listen : file_descr -> int -> unit
-  (** Wrapper for [Unix.listen] *)
+  (** Wrapper for {!Unix.listen} *)
 
-val accept : file_descr -> (file_descr * sockaddr) Lwt.t
-  (** Wrapper for [Unix.accept] *)
+val accept : ?cloexec:bool ->
+             file_descr -> (file_descr * sockaddr) Lwt.t
+  (** Wrapper for {!Unix.accept} *)
 
-val accept_n : file_descr -> int -> ((file_descr * sockaddr) list * exn option) Lwt.t
+val accept_n : ?cloexec:bool ->
+               file_descr -> int -> ((file_descr * sockaddr) list * exn option) Lwt.t
   (** [accept_n fd count] accepts up to [count] connections at one time.
 
-      - if no connection is available right now, it returns a sleeping
-      thread
+      - if no connection is available right now, it returns a pending promise
 
       - if more than 1 and less than [count] are available, it returns
       all of them
@@ -906,7 +917,7 @@ val accept_n : file_descr -> int -> ((file_descr * sockaddr) list * exn option) 
       {{:http://portal.acm.org/citation.cfm?id=1247435}Acceptable strategies for improving web server performance} *)
 
 val connect : file_descr -> sockaddr -> unit Lwt.t
-  (** Wrapper for [Unix.connect] *)
+  (** Wrapper for {!Unix.connect} *)
 
 type shutdown_command =
     Unix.shutdown_command =
@@ -915,13 +926,13 @@ type shutdown_command =
   | SHUTDOWN_ALL
 
 val shutdown : file_descr -> shutdown_command -> unit
-  (** Wrapper for [Unix.shutdown] *)
+  (** Wrapper for {!Unix.shutdown} *)
 
 val getsockname : file_descr -> sockaddr
-  (** Wrapper for [Unix.getsockname] *)
+  (** Wrapper for {!Unix.getsockname} *)
 
 val getpeername : file_descr -> sockaddr
-  (** Wrapper for [Unix.getpeername] *)
+  (** Wrapper for {!Unix.getpeername} *)
 
 type msg_flag =
     Unix.msg_flag =
@@ -930,24 +941,24 @@ type msg_flag =
   | MSG_PEEK
 
 val recv : file_descr -> bytes -> int -> int -> msg_flag list -> int Lwt.t
-(** Wrapper for [Unix.recv].
+(** Wrapper for {!Unix.recv}.
 
     On Windows, [recv] writes data into a temporary buffer, then copies it into
     the given one. *)
 
 val recvfrom : file_descr -> bytes -> int -> int -> msg_flag list -> (int * sockaddr) Lwt.t
-(** Wrapper for [Unix.recvfrom].
+(** Wrapper for {!Unix.recvfrom}.
 
     On Windows, [recvfrom] writes data into a temporary buffer, then copies it
     into the given one. *)
 
 val send : file_descr -> bytes -> int -> int -> msg_flag list -> int Lwt.t
-(** Wrapper for [Unix.send].
+(** Wrapper for {!Unix.send}.
 
     On Windows, [send] copies the given buffer before writing. *)
 
 val sendto : file_descr -> bytes -> int -> int -> msg_flag list -> sockaddr -> int Lwt.t
-(** Wrapper for [Unix.sendto].
+(** Wrapper for {!Unix.sendto}.
 
     On Windows, [sendto] copies the given buffer before writing. *)
 
@@ -980,6 +991,18 @@ val send_msg :
 
     @since 5.0.0 *)
 
+val send_msgto :
+  socket:file_descr -> io_vectors:IO_vectors.t -> fds:Unix.file_descr list ->
+    dest:Unix.sockaddr ->
+    int Lwt.t
+(** [send_msgto ~socket ~io_vectors ~fds ~dest] is similar to [send_msg] but
+    takes an additional [dest] argument to set the address when using a
+    connection-less socket.
+
+    Not implemented on Windows.
+
+    @since 5.4.0 *)
+
 type credentials = {
   cred_pid : int;
   cred_uid : int;
@@ -1008,12 +1031,15 @@ type socket_bool_option =
   | SO_ACCEPTCONN
   | TCP_NODELAY
   | IPV6_ONLY
+#if OCAML_VERSION >= (4, 12, 0)
+  | SO_REUSEPORT
+#endif
 
 type socket_int_option =
     Unix.socket_int_option =
   | SO_SNDBUF
   | SO_RCVBUF
-  | SO_ERROR
+  | SO_ERROR [@ocaml.deprecated "Use Unix.getsockopt_error instead."]
   | SO_TYPE
   | SO_RCVLOWAT
   | SO_SNDLOWAT
@@ -1030,31 +1056,31 @@ type socket_float_option =
     for timeouts. *)
 
 val getsockopt : file_descr -> socket_bool_option -> bool
-  (** Wrapper for [Unix.getsockopt] *)
+  (** Wrapper for {!Unix.getsockopt} *)
 
 val setsockopt : file_descr -> socket_bool_option -> bool -> unit
-  (** Wrapper for [Unix.setsockopt] *)
+  (** Wrapper for {!Unix.setsockopt} *)
 
 val getsockopt_int : file_descr -> socket_int_option -> int
-  (** Wrapper for [Unix.getsockopt_int] *)
+  (** Wrapper for {!Unix.getsockopt_int} *)
 
 val setsockopt_int : file_descr -> socket_int_option -> int -> unit
-  (** Wrapper for [Unix.setsockopt_int] *)
+  (** Wrapper for {!Unix.setsockopt_int} *)
 
 val getsockopt_optint : file_descr -> socket_optint_option -> int option
-  (** Wrapper for [Unix.getsockopt_optint] *)
+  (** Wrapper for {!Unix.getsockopt_optint} *)
 
 val setsockopt_optint : file_descr -> socket_optint_option -> int option -> unit
-  (** Wrapper for [Unix.setsockopt_optint] *)
+  (** Wrapper for {!Unix.setsockopt_optint} *)
 
 val getsockopt_float : file_descr -> socket_float_option -> float
-  (** Wrapper for [Unix.getsockopt_float] *)
+  (** Wrapper for {!Unix.getsockopt_float} *)
 
 val setsockopt_float : file_descr -> socket_float_option -> float -> unit
-  (** Wrapper for [Unix.setsockopt_float] *)
+  (** Wrapper for {!Unix.setsockopt_float} *)
 
 val getsockopt_error : file_descr -> Unix.error option
-  (** Wrapper for [Unix.getsockopt_error] *)
+  (** Wrapper for {!Unix.getsockopt_error} *)
 
 (** {3 Multicast functions} *)
 
@@ -1101,25 +1127,25 @@ type service_entry =
     }
 
 val gethostname : unit -> string Lwt.t
-  (** Wrapper for [Unix.gethostname] *)
+  (** Wrapper for {!Unix.gethostname} *)
 
 val gethostbyname : string -> host_entry Lwt.t
-  (** Wrapper for [Unix.gethostbyname] *)
+  (** Wrapper for {!Unix.gethostbyname} *)
 
 val gethostbyaddr : inet_addr -> host_entry Lwt.t
-  (** Wrapper for [Unix.gethostbyaddr] *)
+  (** Wrapper for {!Unix.gethostbyaddr} *)
 
 val getprotobyname : string -> protocol_entry Lwt.t
-  (** Wrapper for [Unix.getprotobyname] *)
+  (** Wrapper for {!Unix.getprotobyname} *)
 
 val getprotobynumber : int -> protocol_entry Lwt.t
-  (** Wrapper for [Unix.getprotobynumber] *)
+  (** Wrapper for {!Unix.getprotobynumber} *)
 
 val getservbyname : string -> string -> service_entry Lwt.t
-  (** Wrapper for [Unix.getservbyname] *)
+  (** Wrapper for {!Unix.getservbyname} *)
 
 val getservbyport : int -> string -> service_entry Lwt.t
-  (** Wrapper for [Unix.getservbyport] *)
+  (** Wrapper for {!Unix.getservbyport} *)
 
 type addr_info =
     Unix.addr_info =
@@ -1141,7 +1167,7 @@ type getaddrinfo_option =
   | AI_PASSIVE
 
 val getaddrinfo : string -> string -> getaddrinfo_option list -> addr_info list Lwt.t
-  (** Wrapper for [Unix.getaddrinfo] *)
+  (** Wrapper for {!Unix.getaddrinfo} *)
 
 type name_info =
     Unix.name_info =
@@ -1159,7 +1185,7 @@ type getnameinfo_option =
   | NI_DGRAM
 
 val getnameinfo : sockaddr -> getnameinfo_option list -> name_info Lwt.t
-  (** Wrapper for [Unix.getnameinfo] *)
+  (** Wrapper for {!Unix.getnameinfo} *)
 
 (** {2 Terminal interface} *)
 
@@ -1207,7 +1233,7 @@ type terminal_io =
     }
 
 val tcgetattr : file_descr -> terminal_io Lwt.t
-  (** Wrapper for [Unix.tcgetattr] *)
+  (** Wrapper for {!Unix.tcgetattr} *)
 
 type setattr_when =
     Unix.setattr_when =
@@ -1216,13 +1242,13 @@ type setattr_when =
   | TCSAFLUSH
 
 val tcsetattr : file_descr -> setattr_when -> terminal_io -> unit Lwt.t
-  (** Wrapper for [Unix.tcsetattr] *)
+  (** Wrapper for {!Unix.tcsetattr} *)
 
 val tcsendbreak : file_descr -> int -> unit Lwt.t
-  (** Wrapper for [Unix.tcsendbreak] *)
+  (** Wrapper for {!Unix.tcsendbreak} *)
 
 val tcdrain : file_descr -> unit Lwt.t
-  (** Wrapper for [Unix.tcdrain] *)
+  (** Wrapper for {!Unix.tcdrain} *)
 
 type flush_queue =
     Unix.flush_queue =
@@ -1231,7 +1257,7 @@ type flush_queue =
   | TCIOFLUSH
 
 val tcflush : file_descr -> flush_queue -> unit Lwt.t
-  (** Wrapper for [Unix.tcflush] *)
+  (** Wrapper for {!Unix.tcflush} *)
 
 type flow_action =
     Unix.flow_action =
@@ -1241,7 +1267,7 @@ type flow_action =
   | TCION
 
 val tcflow : file_descr -> flow_action -> unit Lwt.t
-  (** Wrapper for [Unix.tcflow] *)
+  (** Wrapper for {!Unix.tcflow} *)
 
 
 
@@ -1255,14 +1281,14 @@ type async_method =
           entire program. *)
   | Async_detach
       (** System calls are made in another system thread, thus without
-          blocking other Lwt threads. The drawback is that it may
+          blocking other Lwt promises. The drawback is that it may
           degrade performance in some cases.
 
           This is the default. *)
   | Async_switch
     [@ocaml.deprecated " Use Lwt_unix.Async_detach."]
-      (** Currently a synonym for [Async_detach]. This was a different method in
-          the past. *)
+      (** @deprecated A synonym for [Async_detach]. This was a
+          different method in the past. *)
 
 val default_async_method : unit -> async_method
   [@@ocaml.deprecated
@@ -1361,7 +1387,7 @@ val wrap_syscall : io_event -> file_descr -> (unit -> 'a) -> 'a Lwt.t
       performed immediately without blocking, it is registered for
       later.
 
-      In the latter case, if the thread is canceled, [action] is
+      In the latter case, if the promise is canceled, [action] is
       removed from [set]. *)
 
 val check_descriptor : file_descr -> unit
@@ -1438,7 +1464,7 @@ val execute_job :
     thread. The following functions allow to use this pipe. *)
 
 val make_notification : ?once : bool -> (unit -> unit) -> int
-  (** [new_notifier ?once f] registers a new notifier. It returns the
+  (** [make_notification ?once f] registers a new notifier. It returns the
       id of the notifier. Each time a notification with this id is
       received, [f] is called.
 
@@ -1555,6 +1581,7 @@ val has_wait4 : bool
 
 val somaxconn : unit -> int
   [@@ocaml.deprecated " This is an internal function."]
+  (** @deprecated This is for internal use only. *)
 
 val retained : 'a -> bool ref
   (** @deprecated Used for testing. *)
@@ -1562,7 +1589,9 @@ val retained : 'a -> bool ref
 val read_bigarray :
   string -> file_descr -> IO_vectors._bigarray -> int -> int -> int Lwt.t
   [@@ocaml.deprecated " This is an internal function."]
+  (** @deprecated This is for internal use only. *)
 
 val write_bigarray :
   string -> file_descr -> IO_vectors._bigarray -> int -> int -> int Lwt.t
   [@@ocaml.deprecated " This is an internal function."]
+  (** @deprecated This is for internal use only. *)

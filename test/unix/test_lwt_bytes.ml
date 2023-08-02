@@ -125,42 +125,30 @@ let suite = suite "lwt_bytes" [
 
     test "get out of bounds : lower limit" begin fun () ->
       let buff = Lwt_bytes.create 3 in
-      try
-        let _ = Lwt_bytes.get buff (-1) in
-        Lwt.return false
-      with
-      | Invalid_argument _ -> Lwt.return true
+      match Lwt_bytes.get buff (-1) with
+      | exception Invalid_argument _ -> Lwt.return true
       | _ -> Lwt.return false
     end;
 
     test "get out of bounds : upper limit" begin fun () ->
       let buff = Lwt_bytes.create 3 in
-      try
-        let _ = Lwt_bytes.get buff 3 in
-        Lwt.return false
-      with
-      | Invalid_argument _ -> Lwt.return true
+      match Lwt_bytes.get buff 3 with
+      | exception Invalid_argument _ -> Lwt.return true
       | _ -> Lwt.return false
     end;
 
     test "set out of bounds : lower limit" begin fun () ->
       let buff = Lwt_bytes.create 3 in
-      try
-        let () = Lwt_bytes.set buff (-1) 'a' in
-        Lwt.return true
-      with
-      | Invalid_argument _ -> Lwt.return true
-      | _ -> Lwt.return false
+      match Lwt_bytes.set buff (-1) 'a' with
+      | exception Invalid_argument _ -> Lwt.return true
+      | () -> Lwt.return false
     end;
 
     test "set out of bounds : upper limit" begin fun () ->
       let buff = Lwt_bytes.create 3 in
-      try
-        let () = Lwt_bytes.set buff 3 'a' in
-        Lwt.return true
-      with
-      | Invalid_argument _ -> Lwt.return true
-      | _ -> Lwt.return false
+      match Lwt_bytes.set buff 3 'a' with
+      | exception Invalid_argument _ -> Lwt.return true
+      | () -> Lwt.return false
     end;
 
     test "unsafe_get/unsafe_set" begin fun () ->
@@ -222,12 +210,9 @@ let suite = suite "lwt_bytes" [
       let buf1 = Lwt_bytes.of_string str1 in
       let str2 = "abcdef" in
       let buf2 = Lwt_bytes.of_string str2 in
-      try
-        let() = Lwt_bytes.blit buf1 (-1) buf2 3 3 in
-        Lwt.return_false
-      with
-      | Invalid_argument _ -> Lwt.return true
-      | _ -> Lwt.return false
+      match Lwt_bytes.blit buf1 (-1) buf2 3 3 with
+      | exception Invalid_argument _ -> Lwt.return true
+      | () -> Lwt.return false
     end;
 
     test "blit source out of bounds: upper limit" begin fun () ->
@@ -235,12 +220,9 @@ let suite = suite "lwt_bytes" [
       let buf1 = Lwt_bytes.of_string str1 in
       let str2 = "abcdef" in
       let buf2 = Lwt_bytes.of_string str2 in
-      try
-        let() = Lwt_bytes.blit buf1 1 buf2 3 3 in
-        Lwt.return_false
-      with
-      | Invalid_argument _ -> Lwt.return true
-      | _ -> Lwt.return false
+      match Lwt_bytes.blit buf1 1 buf2 3 3 with
+      | exception Invalid_argument _ -> Lwt.return true
+      | () -> Lwt.return false
     end;
 
     test "blit destination out of bounds: lower limit" begin fun () ->
@@ -248,12 +230,9 @@ let suite = suite "lwt_bytes" [
       let buf1 = Lwt_bytes.of_string str1 in
       let str2 = "abcdef" in
       let buf2 = Lwt_bytes.of_string str2 in
-      try
-        let() = Lwt_bytes.blit buf1 0 buf2 (-1) 3 in
-        Lwt.return_false
-      with
-      | Invalid_argument _ -> Lwt.return true
-      | _ -> Lwt.return false
+      match Lwt_bytes.blit buf1 0 buf2 (-1) 3 with
+      | exception Invalid_argument _ -> Lwt.return true
+      | () -> Lwt.return false
     end;
 
     test "blit destination out of bounds: upper limit" begin fun () ->
@@ -261,12 +240,9 @@ let suite = suite "lwt_bytes" [
       let buf1 = Lwt_bytes.of_string str1 in
       let str2 = "abcdef" in
       let buf2 = Lwt_bytes.of_string str2 in
-      try
-        let() = Lwt_bytes.blit buf1 0 buf2 4 3 in
-        Lwt.return_false
-      with
-      | Invalid_argument _ -> Lwt.return true
-      | _ -> Lwt.return false
+      match Lwt_bytes.blit buf1 0 buf2 4 3 with
+      | exception Invalid_argument _ -> Lwt.return true
+      | () -> Lwt.return false
     end;
 
     test "blit length out of bounds: lower limit" begin fun () ->
@@ -274,12 +250,9 @@ let suite = suite "lwt_bytes" [
       let buf1 = Lwt_bytes.of_string str1 in
       let str2 = "abcdef" in
       let buf2 = Lwt_bytes.of_string str2 in
-      try
-        let() = Lwt_bytes.blit buf1 0 buf2 3 (-1) in
-        Lwt.return_false
-      with
-      | Invalid_argument _ -> Lwt.return true
-      | _ -> Lwt.return false
+      match Lwt_bytes.blit buf1 0 buf2 3 (-1) with
+      | exception Invalid_argument _ -> Lwt.return true
+      | () -> Lwt.return false
     end;
 
     test "blit from bytes" begin fun () ->
@@ -295,60 +268,108 @@ let suite = suite "lwt_bytes" [
       let bytes1 = Bytes.of_string "abc" in
       let str2 = "abcdef" in
       let buf2 = Lwt_bytes.of_string str2 in
-      try
-        let () = Lwt_bytes.blit_from_bytes bytes1 (-1) buf2 3 3 in
-        Lwt.return_false
-      with
-      | Invalid_argument _ -> Lwt.return_true
-      | _ -> Lwt.return_false
+      match Lwt_bytes.blit_from_bytes bytes1 (-1) buf2 3 3 with
+      | exception Invalid_argument _ -> Lwt.return_true
+      | () -> Lwt.return_false
     end;
 
     test "blit from bytes source out of bounds: upper limit" begin fun () ->
       let bytes1 = Bytes.of_string "abc" in
       let str2 = "abcdef" in
       let buf2 = Lwt_bytes.of_string str2 in
-      try
-        let () = Lwt_bytes.blit_from_bytes bytes1 1 buf2 3 3 in
-        Lwt.return_false
-      with
-      | Invalid_argument _ -> Lwt.return_true
-      | _ -> Lwt.return_false
+      match Lwt_bytes.blit_from_bytes bytes1 1 buf2 3 3 with
+      | exception Invalid_argument _ -> Lwt.return_true
+      | () -> Lwt.return_false
     end;
 
     test "blit from bytes destination out of bounds: lower limit" begin fun () ->
       let bytes1 = Bytes.of_string "abc" in
       let str2 = "abcdef" in
       let buf2 = Lwt_bytes.of_string str2 in
-      try
-        let () = Lwt_bytes.blit_from_bytes bytes1 0 buf2 (-1) 3 in
-        Lwt.return_false
-      with
-      | Invalid_argument _ -> Lwt.return_true
-      | _ -> Lwt.return_false
+      match Lwt_bytes.blit_from_bytes bytes1 0 buf2 (-1) 3 with
+      | exception Invalid_argument _ -> Lwt.return_true
+      | () -> Lwt.return_false
     end;
 
     test "blit from bytes destination out of bounds: upper limit" begin fun () ->
       let bytes1 = Bytes.of_string "abc" in
       let str2 = "abcdef" in
       let buf2 = Lwt_bytes.of_string str2 in
-      try
-        let () = Lwt_bytes.blit_from_bytes bytes1 0 buf2 4 3 in
-        Lwt.return_false
-      with
-      | Invalid_argument _ -> Lwt.return_true
-      | _ -> Lwt.return_false
+      match Lwt_bytes.blit_from_bytes bytes1 0 buf2 4 3 with
+      | exception Invalid_argument _ -> Lwt.return_true
+      | () -> Lwt.return_false
     end;
 
     test "blit from bytes length out of bounds: lower limit" begin fun () ->
       let bytes1 = Bytes.of_string "abc" in
       let str2 = "abcdef" in
       let buf2 = Lwt_bytes.of_string str2 in
-      try
-        let () = Lwt_bytes.blit_from_bytes bytes1 0 buf2 3 (-1) in
-        Lwt.return_false
-      with
-      | Invalid_argument _ -> Lwt.return_true
-      | _ -> Lwt.return_false
+      match Lwt_bytes.blit_from_bytes bytes1 0 buf2 3 (-1) with
+      | exception Invalid_argument _ -> Lwt.return_true
+      | () -> Lwt.return_false
+      end;
+
+    test "blit from string" begin fun () ->
+      let string1 = "abc" in
+      let str2 = "abcdef" in
+      let buf2 = Lwt_bytes.of_string str2 in
+      let () = Lwt_bytes.blit_from_string string1 0 buf2 3 3 in
+      let check = "abcabc" = Lwt_bytes.to_string buf2 in
+      Lwt.return check
+    end;
+
+    test "blit from string source out of bounds: lower limit" begin fun () ->
+      let string1 = "abc" in
+      let str2 = "abcdef" in
+      let buf2 = Lwt_bytes.of_string str2 in
+      match Lwt_bytes.blit_from_string string1 (-1) buf2 3 3 with
+      | exception Invalid_argument _ -> Lwt.return_true
+      | () -> Lwt.return_false
+    end;
+
+    test "blit from string source out of bounds: upper limit" begin fun () ->
+      let string1 = "abc" in
+      let str2 = "abcdef" in
+      let buf2 = Lwt_bytes.of_string str2 in
+      match Lwt_bytes.blit_from_string string1 1 buf2 3 3 with
+      | exception Invalid_argument _ -> Lwt.return_true
+      | () -> Lwt.return_false
+    end;
+
+    test "blit from string destination out of bounds: lower limit" begin fun () ->
+      let string1 = "abc" in
+      let str2 = "abcdef" in
+      let buf2 = Lwt_bytes.of_string str2 in
+      match Lwt_bytes.blit_from_string string1 0 buf2 (-1) 3 with
+      | exception Invalid_argument _ -> Lwt.return_true
+      | () -> Lwt.return_false
+    end;
+
+    test "blit from string destination out of bounds: upper limit" begin fun () ->
+      let string1 = "abc" in
+      let str2 = "abcdef" in
+      let buf2 = Lwt_bytes.of_string str2 in
+      match Lwt_bytes.blit_from_string string1 0 buf2 4 3 with
+      | exception Invalid_argument _ -> Lwt.return_true
+      | () -> Lwt.return_false
+    end;
+
+    test "blit from string length out of bounds: lower limit" begin fun () ->
+      let string1 = "abc" in
+      let str2 = "abcdef" in
+      let buf2 = Lwt_bytes.of_string str2 in
+      match Lwt_bytes.blit_from_string string1 0 buf2 3 (-1) with
+      | exception Invalid_argument _ -> Lwt.return_true
+      | () -> Lwt.return_false
+    end;
+
+    test "blit from string length out of bounds: upper limit" begin fun () ->
+      let string1 = "abc" in
+      let str2 = "abcdef" in
+      let buf2 = Lwt_bytes.of_string str2 in
+      match Lwt_bytes.blit_from_string string1 0 buf2 3 10 with
+      | exception Invalid_argument _ -> Lwt.return_true
+      | () -> Lwt.return_false
     end;
 
     test "blit to bytes" begin fun () ->
@@ -366,12 +387,9 @@ let suite = suite "lwt_bytes" [
       let buf1 = Lwt_bytes.of_string str1 in
       let str2 = "abcdef" in
       let bytes2 = Bytes.of_string str2 in
-      try
-        let () = Lwt_bytes.blit_to_bytes buf1 (-1) bytes2 3 3 in
-        Lwt.return_false
-      with
-      | Invalid_argument _ -> Lwt.return_true
-      | _ -> Lwt.return_false
+      match Lwt_bytes.blit_to_bytes buf1 (-1) bytes2 3 3 with
+      | exception Invalid_argument _ -> Lwt.return_true
+      | () -> Lwt.return_false
     end;
 
     test "blit to bytes source out of bounds: upper limit" begin fun () ->
@@ -379,12 +397,9 @@ let suite = suite "lwt_bytes" [
       let buf1 = Lwt_bytes.of_string str1 in
       let str2 = "abcdef" in
       let bytes2 = Bytes.of_string str2 in
-      try
-        let () = Lwt_bytes.blit_to_bytes buf1 1 bytes2 3 3 in
-        Lwt.return_false
-      with
-      | Invalid_argument _ -> Lwt.return_true
-      | _ -> Lwt.return_false
+      match Lwt_bytes.blit_to_bytes buf1 1 bytes2 3 3 with
+      | exception Invalid_argument _ -> Lwt.return_true
+      | () -> Lwt.return_false
     end;
 
     test "blit to bytes destination out of bounds: lower limit" begin fun () ->
@@ -392,12 +407,9 @@ let suite = suite "lwt_bytes" [
       let buf1 = Lwt_bytes.of_string str1 in
       let str2 = "abcdef" in
       let bytes2 = Bytes.of_string str2 in
-      try
-        let () = Lwt_bytes.blit_to_bytes buf1 0 bytes2 (-1) 3 in
-        Lwt.return_false
-      with
-      | Invalid_argument _ -> Lwt.return_true
-      | _ -> Lwt.return_false
+      match Lwt_bytes.blit_to_bytes buf1 0 bytes2 (-1) 3 with
+      | exception Invalid_argument _ -> Lwt.return_true
+      | () -> Lwt.return_false
     end;
 
     test "blit to bytes destination out of bounds: upper limit" begin fun () ->
@@ -405,12 +417,9 @@ let suite = suite "lwt_bytes" [
       let buf1 = Lwt_bytes.of_string str1 in
       let str2 = "abcdef" in
       let bytes2 = Bytes.of_string str2 in
-      try
-        let () = Lwt_bytes.blit_to_bytes buf1 0 bytes2 4 3 in
-        Lwt.return_false
-      with
-      | Invalid_argument _ -> Lwt.return_true
-      | _ -> Lwt.return_false
+      match Lwt_bytes.blit_to_bytes buf1 0 bytes2 4 3 with
+      | exception Invalid_argument _ -> Lwt.return_true
+      | () -> Lwt.return_false
     end;
 
     test "blit to bytes length out of bounds: lower limit" begin fun () ->
@@ -418,12 +427,9 @@ let suite = suite "lwt_bytes" [
       let buf1 = Lwt_bytes.of_string str1 in
       let str2 = "abcdef" in
       let bytes2 = Bytes.of_string str2 in
-      try
-        let () = Lwt_bytes.blit_to_bytes buf1 0 bytes2 3 (-1) in
-        Lwt.return_false
-      with
-      | Invalid_argument _ -> Lwt.return_true
-      | _ -> Lwt.return_false
+      match Lwt_bytes.blit_to_bytes buf1 0 bytes2 3 (-1) with
+      | exception Invalid_argument _ -> Lwt.return_true
+      | () -> Lwt.return_false
     end;
 
     test "unsafe blit" begin fun () ->
@@ -441,6 +447,15 @@ let suite = suite "lwt_bytes" [
       let str2 = "abcdef" in
       let buf2 = Lwt_bytes.of_string str2 in
       let () = Lwt_bytes.unsafe_blit_from_bytes bytes1 0 buf2 3 3 in
+      let check = "abcabc" = Lwt_bytes.to_string buf2 in
+      Lwt.return check
+    end;
+
+    test "unsafe blit from string" begin fun () ->
+      let string1 = "abc" in
+      let str2 = "abcdef" in
+      let buf2 = Lwt_bytes.of_string str2 in
+      let () = Lwt_bytes.unsafe_blit_from_string string1 0 buf2 3 3 in
       let check = "abcabc" = Lwt_bytes.to_string buf2 in
       Lwt.return check
     end;
@@ -468,33 +483,24 @@ let suite = suite "lwt_bytes" [
     test "proxy offset out of bounds: lower limit" begin fun () ->
       let str = "abcdef" in
       let buf = Lwt_bytes.of_string str in
-      try
-        let _ = Lwt_bytes.proxy buf (-1) 3 in
-        Lwt.return_false
-      with
-      | Invalid_argument _ -> Lwt.return_true
+      match Lwt_bytes.proxy buf (-1) 3 with
+      | exception Invalid_argument _ -> Lwt.return_true
       | _ -> Lwt.return_false
     end;
 
     test "proxy offset out of bounds: upper limit" begin fun () ->
       let str = "abcdef" in
       let buf = Lwt_bytes.of_string str in
-      try
-        let _ = Lwt_bytes.proxy buf 4 3 in
-        Lwt.return_false
-      with
-      | Invalid_argument _ -> Lwt.return_true
+      match Lwt_bytes.proxy buf 4 3 with
+      | exception Invalid_argument _ -> Lwt.return_true
       | _ -> Lwt.return_false
     end;
 
     test "proxy length out of bounds: lower limit" begin fun () ->
       let str = "abcdef" in
       let buf = Lwt_bytes.of_string str in
-      try
-        let _ = Lwt_bytes.proxy buf 3 (-1) in
-        Lwt.return_false
-      with
-      | Invalid_argument _ -> Lwt.return_true
+      match Lwt_bytes.proxy buf 3 (-1) with
+      | exception Invalid_argument _ -> Lwt.return_true
       | _ -> Lwt.return_false
     end;
 
@@ -509,33 +515,24 @@ let suite = suite "lwt_bytes" [
     test "extract offset out of bounds: lower limit" begin fun () ->
       let str = "abcdef" in
       let buf = Lwt_bytes.of_string str in
-      try
-        let _ = Lwt_bytes.extract buf (-1) 3 in
-        Lwt.return_false
-      with
-      | Invalid_argument _ -> Lwt.return_true
+      match Lwt_bytes.extract buf (-1) 3 with
+      | exception Invalid_argument _ -> Lwt.return_true
       | _ -> Lwt.return_false
     end;
 
     test "extract offset out of bounds: upper limit" begin fun () ->
       let str = "abcdef" in
       let buf = Lwt_bytes.of_string str in
-      try
-        let _ = Lwt_bytes.extract buf 4 3 in
-        Lwt.return_false
-      with
-      | Invalid_argument _ -> Lwt.return_true
+      match Lwt_bytes.extract buf 4 3 with
+      | exception Invalid_argument _ -> Lwt.return_true
       | _ -> Lwt.return_false
     end;
 
     test "extract length out of bounds: lower limit" begin fun () ->
       let str = "abcdef" in
       let buf = Lwt_bytes.of_string str in
-      try
-        let _ = Lwt_bytes.extract buf 3 (-1) in
-        Lwt.return_false
-      with
-      | Invalid_argument _ -> Lwt.return_true
+      match Lwt_bytes.extract buf 3 (-1) with
+      | exception Invalid_argument _ -> Lwt.return_true
       | _ -> Lwt.return_false
     end;
 
@@ -558,34 +555,25 @@ let suite = suite "lwt_bytes" [
     test "fill offset out of bounds: lower limit" begin fun () ->
       let str = "abcdef" in
       let buf = Lwt_bytes.of_string str in
-      try
-        let () = Lwt_bytes.fill buf (-1) 3 'a' in
-        Lwt.return_false
-      with
-      | Invalid_argument _ -> Lwt.return_true
-      | _ -> Lwt.return_false
+      match Lwt_bytes.fill buf (-1) 3 'a' with
+      | exception Invalid_argument _ -> Lwt.return_true
+      | () -> Lwt.return_false
     end;
 
     test "fill offset out of bounds: upper limit" begin fun () ->
       let str = "abcdef" in
       let buf = Lwt_bytes.of_string str in
-      try
-        let () = Lwt_bytes.fill buf 4 3 'a' in
-        Lwt.return_false
-      with
-      | Invalid_argument _ -> Lwt.return_true
-      | _ -> Lwt.return_false
+      match Lwt_bytes.fill buf 4 3 'a' with
+      | exception Invalid_argument _ -> Lwt.return_true
+      | () -> Lwt.return_false
     end;
 
     test "fill length out of bounds lower limit" begin fun () ->
       let str = "abcdef" in
       let buf = Lwt_bytes.of_string str in
-      try
-        let () = Lwt_bytes.fill buf 3 (-1) 'a' in
-        Lwt.return_false
-      with
-      | Invalid_argument _ -> Lwt.return_true
-      | _ -> Lwt.return_false
+      match Lwt_bytes.fill buf 3 (-1) 'a' with
+      | exception Invalid_argument _ -> Lwt.return_true
+      | () -> Lwt.return_false
     end;
 
     test "unsafe fill" begin fun () ->
@@ -612,7 +600,7 @@ let suite = suite "lwt_bytes" [
     test "read: buffer retention" ~sequential:true begin fun () ->
       let buffer = Lwt_bytes.create 3 in
 
-      let read_fd, write_fd = Lwt_unix.pipe () in
+      let read_fd, write_fd = Lwt_unix.pipe ~cloexec:true () in
       Lwt_unix.set_blocking read_fd true;
 
       Lwt_unix.write_string write_fd "foo" 0 3 >>= fun _ ->
@@ -649,7 +637,7 @@ let suite = suite "lwt_bytes" [
     test "write: buffer retention" ~sequential:true begin fun () ->
       let buffer = Lwt_bytes.create 3 in
 
-      let read_fd, write_fd = Lwt_unix.pipe () in
+      let read_fd, write_fd = Lwt_unix.pipe ~cloexec:true () in
       Lwt_unix.set_blocking write_fd true;
 
       let retained = Lwt_unix.retained buffer in
@@ -755,6 +743,25 @@ let suite = suite "lwt_bytes" [
       Lwt.return check
     end;
 
+    test "send_msgto" ~only_if:(fun () -> not Sys.win32) begin fun () ->
+      let buffer = gen_buf 6 in
+      let offset = 0 in
+      let server_logic socket =
+        let io_vectors = [Lwt_bytes.io_vector ~buffer ~offset ~length:6] in
+        (Lwt_bytes.recv_msg [@ocaml.warning "-3"]) ~socket ~io_vectors
+      in
+      let client_logic socket sockaddr =
+        let message = Lwt_bytes.of_string "abcdefghij" in
+        let io_vectors = Lwt_unix.IO_vectors.create () in
+        Lwt_unix.IO_vectors.append_bigarray io_vectors message offset 9;
+        Lwt_unix.send_msgto ~socket ~io_vectors ~fds:[] ~dest:sockaddr
+      in
+      udp_server_client_exchange server_logic client_logic
+      >>= fun () ->
+      let check = "abcdef" = Lwt_bytes.to_string buffer in
+      Lwt.return check
+    end;
+
     test "map_file" begin fun () ->
       let test_file = "bytes_io_data" in
       let fd = Unix.openfile test_file [O_RDONLY] 0 in
@@ -767,7 +774,7 @@ let suite = suite "lwt_bytes" [
     end;
 
     test "page_size" begin fun () ->
-      let sizes = [4096; 65536] in
+      let sizes = [4096; 16384; 65536] in
       Lwt.return (List.mem Lwt_bytes.page_size sizes)
     end;
 

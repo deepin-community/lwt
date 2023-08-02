@@ -6,11 +6,10 @@
 #ifndef __LWT_UNIX_H
 #define __LWT_UNIX_H
 
-#define CAML_NAME_SPACE
+#include "lwt_config.h"
 
 #include <caml/mlvalues.h>
 #include <caml/unixsupport.h>
-#include <lwt_config.h>
 
 #include <caml/socketaddr.h>
 #include <string.h>
@@ -46,6 +45,11 @@ char *lwt_unix_strdup(char *string);
 /* Raise [Lwt_unix.Not_available]. */
 void lwt_unix_not_available(char const *feature) Noreturn;
 
+#define LWT_NOT_AVAILABLE_BYTE(prim)             \
+    CAMLprim value lwt_##prim(value *a1, int a2) \
+    {                                            \
+        lwt_unix_not_available(#prim);           \
+    }
 #define LWT_NOT_AVAILABLE1(prim) \
     CAMLprim value lwt_##prim(value a1) { lwt_unix_not_available(#prim); }
 #define LWT_NOT_AVAILABLE2(prim)                  \
@@ -194,7 +198,7 @@ struct lwt_unix_job {
     /* The function to call to extract the result and free memory
        allocated by the job.
 
-       Note: if you want to raise an excpetion, be sure to free
+       Note: if you want to raise an exception, be sure to free
        resources before raising it!
 
        It has been introduced in Lwt 2.3.3. */

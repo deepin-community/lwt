@@ -106,6 +106,8 @@ class virtual abstract = object(self)
   method readable_count = Lwt_sequence.length readables
   method writable_count = Lwt_sequence.length writables
   method timer_count = Lwt_sequence.length timers
+
+  method fork = ()
 end
 
 class type t = object
@@ -254,9 +256,9 @@ let bad_fd fd =
     true
 
 let invoke_actions fd map =
-  match try Some(Fd_map.find fd map) with Not_found -> None with
-  | Some actions -> Lwt_sequence.iter_l (fun f -> f ()) actions
-  | None -> ()
+  match Fd_map.find fd map with
+  | exception Not_found -> ()
+  | actions -> Lwt_sequence.iter_l (fun f -> f ()) actions
 
 class virtual select_or_poll_based = object
   inherit abstract
@@ -430,6 +432,7 @@ let fake_io fd = !current#fake_io fd
 let readable_count () = !current#readable_count
 let writable_count () = !current#writable_count
 let timer_count () = !current#timer_count
+let fork () = !current#fork
 
 module Versioned =
 struct

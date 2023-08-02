@@ -5,13 +5,6 @@
 
 open Lwt.Infix
 
-let opaque_identity x =
-  #if OCAML_VERSION < (4, 03, 0)
-    x
-  #else
-    Sys.opaque_identity x
-  #endif
-
 type 'a event = 'a React.event
 type 'a signal = 'a React.signal
 
@@ -27,7 +20,7 @@ module E = struct
   let with_finaliser f event =
     let r = ref () in
     Gc.finalise (finalise f) r;
-    map (fun x -> ignore (opaque_identity r); x) event
+    map (fun x -> ignore (Sys.opaque_identity r); x) event
 
   let next ev =
     let waiter, wakener = Lwt.task () in
@@ -101,7 +94,8 @@ module E = struct
   let of_stream stream =
     let event, push = create () in
     let t =
-      Lwt.pause () >>= fun () -> Lwt_stream.iter (fun v -> push v) stream in
+      Lwt.pause () >>= fun () ->
+      Lwt_stream.iter (fun v -> try push v with exn -> !Lwt.async_exception_hook exn) stream in
     with_finaliser (cancel_thread t) event
 
   let delay thread =
@@ -275,11 +269,7 @@ module S = struct
     let r = ref () in
     Gc.finalise (finalise f) r;
     map
-    #if OCAML_VERSION < (4, 03, 0)
-      (fun x -> ignore r; x)
-    #else
       (fun x -> ignore (Sys.opaque_identity r); x)
-    #endif
       signal
 
   let limit ?eq f s =
@@ -454,19 +444,21 @@ module S = struct
     map_s ?eq f s1
 
   let l2_s ?eq f s1 s2 =
-    map_s ?eq (fun (x1, x2) -> f x1 x2) (l2 (fun x1 x2 -> (x1, x2)) s1 s2)
+    (* Some details about the use of [fun _ _ -> false] on
+       https://github.com/ocsigen/lwt/pull/893#pullrequestreview-783083496 *)
+    map_s ?eq (fun (x1, x2) -> f x1 x2) (l2 ~eq:(fun _ _ -> false) (fun x1 x2 -> (x1, x2)) s1 s2)
 
   let l3_s ?eq f s1 s2 s3 =
-    map_s ?eq (fun (x1, x2, x3) -> f x1 x2 x3) (l3 (fun x1 x2 x3-> (x1, x2, x3)) s1 s2 s3)
+    map_s ?eq (fun (x1, x2, x3) -> f x1 x2 x3) (l3 ~eq:(fun _ _ -> false) (fun x1 x2 x3-> (x1, x2, x3)) s1 s2 s3)
 
   let l4_s ?eq f s1 s2 s3 s4 =
-    map_s ?eq (fun (x1, x2, x3, x4) -> f x1 x2 x3 x4) (l4 (fun x1 x2 x3 x4-> (x1, x2, x3, x4)) s1 s2 s3 s4)
+    map_s ?eq (fun (x1, x2, x3, x4) -> f x1 x2 x3 x4) (l4 ~eq:(fun _ _ -> false) (fun x1 x2 x3 x4-> (x1, x2, x3, x4)) s1 s2 s3 s4)
 
   let l5_s ?eq f s1 s2 s3 s4 s5 =
-    map_s ?eq (fun (x1, x2, x3, x4, x5) -> f x1 x2 x3 x4 x5) (l5 (fun x1 x2 x3 x4 x5-> (x1, x2, x3, x4, x5)) s1 s2 s3 s4 s5)
+    map_s ?eq (fun (x1, x2, x3, x4, x5) -> f x1 x2 x3 x4 x5) (l5 ~eq:(fun _ _ -> false) (fun x1 x2 x3 x4 x5-> (x1, x2, x3, x4, x5)) s1 s2 s3 s4 s5)
 
   let l6_s ?eq f s1 s2 s3 s4 s5 s6 =
-    map_s ?eq (fun (x1, x2, x3, x4, x5, x6) -> f x1 x2 x3 x4 x5 x6) (l6 (fun x1 x2 x3 x4 x5 x6-> (x1, x2, x3, x4, x5, x6)) s1 s2 s3 s4 s5 s6)
+    map_s ?eq (fun (x1, x2, x3, x4, x5, x6) -> f x1 x2 x3 x4 x5 x6) (l6 ~eq:(fun _ _ -> false) (fun x1 x2 x3 x4 x5 x6-> (x1, x2, x3, x4, x5, x6)) s1 s2 s3 s4 s5 s6)
 
   (* +---------------------------------------------------------------+
      | Monadic interface                                             |

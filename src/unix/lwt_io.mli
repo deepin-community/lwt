@@ -28,7 +28,7 @@
     Note about errors: input functions of this module raise
     [End_of_file] when the end-of-file is reached (i.e. when the read
     function returns [0]). Other exceptions are ones caused by the
-    backend read/write functions, such as [Unix.Unix_error].
+    backend read/write functions, such as {!Unix.Unix_error}.
 *)
 
 exception Channel_closed of string
@@ -86,9 +86,10 @@ val null : output_channel
 
 (** {2 Channels creation/manipulation} *)
 
-val pipe : ?in_buffer : Lwt_bytes.t -> ?out_buffer : Lwt_bytes.t -> unit ->
+val pipe : ?cloexec : bool ->
+  ?in_buffer : Lwt_bytes.t -> ?out_buffer : Lwt_bytes.t -> unit ->
   input_channel * output_channel
-  (** [pipe ?in_buffer ?out_buffer ()] creates a pipe using
+  (** [pipe ?cloexec ?in_buffer ?out_buffer ()] creates a pipe using
       {!Lwt_unix.pipe} and makes two channels from the two returned file
       descriptors *)
 
@@ -117,7 +118,7 @@ val make :
       @param close close function of the channel. It defaults to
       [Lwt.return]
 
-      @param seek same meaning as [Unix.lseek]
+      @param seek same meaning as {!Unix.lseek}
 
       @param mode either {!input} or {!output}
 
@@ -245,10 +246,11 @@ val read_lines : input_channel -> string Lwt_stream.t
   (** [read_lines ic] returns a stream holding all lines of [ic] *)
 
 val read : ?count : int -> input_channel -> string Lwt.t
-(** If [~count] is specified, [read ~count ic] reads at most [~count] characters
-    from [ic]. Note that fewer than [~count] characters can be read; check the
-    size of the resulting string. [read] returns [""] if the end of input is
-    reached.
+(** If [~count] is specified, [read ~count ic] reads at most [~count] bytes from
+    [ic] in one read operation. Note that fewer than [~count] bytes can be read.
+    This can happen for multiple reasons, including end of input, or no more
+    data currently available. Check the size of the resulting string. [read]
+    resolves with [""] if the input channel is already at the end of input.
 
     If [~count] is not specified, [read ic] reads all bytes until the end of
     input. *)
@@ -267,19 +269,21 @@ val read_into_exactly : input_channel -> bytes -> int -> int -> unit Lwt.t
 
       @raise End_of_file on end of input *)
 
+val read_into_bigstring : input_channel -> Lwt_bytes.t -> int -> int -> int Lwt.t
+
+val read_into_exactly_bigstring : input_channel -> Lwt_bytes.t -> int -> int -> unit Lwt.t
+
 val read_value : input_channel -> 'a Lwt.t
 (** [read_value channel] reads a marshaled value from [channel]; it corresponds
-    to the standard library's
-    {{:https://caml.inria.fr/pub/docs/manual-ocaml/libref/Marshal.html#VALfrom_channel} [Marshal.from_channel]}.
-    The corresponding writing function is {!write_value}.
+    to the standard library's {!Stdlib.Marshal.from_channel}. The corresponding
+    writing function is {!write_value}.
 
     Note that reading marshaled values is {e not}, in general, type-safe. See
-    the warning in the description of module
-    {{:https://caml.inria.fr/pub/docs/manual-ocaml/libref/Marshal.html}
-    [Marshal]} for details. The short version is: if you read a value of one
-    type, such as [string], when a value of another type, such as [int] has
-    actually been marshaled to [channel], you may get arbitrary behavior,
-    including segmentation faults, access violations, security bugs, etc. *)
+    the warning in the description of module {!Stdlib.Marshal} for details. The
+    short version is: if you read a value of one type, such as [string], when a
+    value of another type, such as [int] has actually been marshaled to
+    [channel], you may get arbitrary behavior, including segmentation faults,
+    access violations, security bugs, etc. *)
 
 (** {2 Writing} *)
 
@@ -312,12 +316,16 @@ val write_from : output_channel -> bytes -> int -> int -> int Lwt.t
       to [oc], from [buffer] at offset [offset] and returns the number
       of bytes actually written *)
 
+val write_from_bigstring : output_channel -> Lwt_bytes.t -> int -> int -> int Lwt.t
+
 val write_from_string : output_channel -> string -> int -> int -> int Lwt.t
   (** See {!write}. *)
 
 val write_from_exactly : output_channel -> bytes -> int -> int -> unit Lwt.t
   (** [write_from_exactly oc buffer offset length] writes all [length]
       bytes from [buffer] at offset [offset] to [oc] *)
+
+val write_from_exactly_bigstring : output_channel -> Lwt_bytes.t -> int -> int -> unit Lwt.t
 
 val write_from_string_exactly :
   output_channel -> string -> int -> int -> unit Lwt.t
@@ -326,9 +334,8 @@ val write_from_string_exactly :
 val write_value :
   output_channel -> ?flags : Marshal.extern_flags list -> 'a -> unit Lwt.t
 (** [write_value channel ?flags v] writes [v] to [channel] using the [Marshal]
-    module of the standard library. See
-    {{:https://caml.inria.fr/pub/docs/manual-ocaml/libref/Marshal.html#VALto_channel}
-    [Marshal.to_channel]} for an explanation of [?flags].
+    module of the standard library. See {!Stdlib.Marshal.to_channel} for an
+    explanation of [?flags].
 
     The corresponding reading function is {!read_value}. See warnings about type
     safety in the description of {!read_value}. *)
@@ -411,8 +418,7 @@ val open_file :
     If [~buffer] is supplied, it is used as the I/O buffer.
 
     If [~flags] is supplied, the file is opened with the given flags (see
-    {{: https://caml.inria.fr/pub/docs/manual-ocaml/libref/Unix.html#TYPEopen_flag}
-    [Unix.open_flag]}). Note that [~flags] is used {e exactly} as given. For
+    {!Unix.open_flag}). Note that [~flags] is used {e exactly} as given. For
     example, opening a file with [~flags] and [~mode:Input] does {e not}
     implicitly add [O_RDONLY]. So, you should include [O_RDONLY] when opening
     for reading ([~mode:Input]), and [O_WRONLY] when opening for writing
@@ -426,7 +432,7 @@ val open_file :
     Note: if opening for writing ([~mode:Output]), and the file already exists,
     [open_file] truncates (clears) the file by default. If you would like to
     keep the pre-existing contents of the file, use the [~flags] parameter to
-    pass a custom flags list that does not include [Unix.O_TRUNC].
+    pass a custom flags list that does not include {!Unix.O_TRUNC}.
 
     @raise Unix.Unix_error on error. *)
 
@@ -472,12 +478,9 @@ val open_temp_file :
     file.
 
     [?temp_dir] can be used to choose the directory in which the file is
-    created. For the current directory, use
-    {{: https://caml.inria.fr/pub/docs/manual-ocaml/libref/Filename.html#VALcurrent_dir_name}
-    [Filename.current_dir_name]}. If not specified, the directory is taken from
-    {{: https://caml.inria.fr/pub/docs/manual-ocaml/libref/Filename.html#VALget_temp_dir_name}
-    [Filename.get_temp_dir_name]}, which is typically set to your system
-    temporary file directory.
+    created. For the current directory, use {!Stdlib.Filename.current_dir_name}.
+    If not specified, the directory is taken from {!Stdlib.Filename.get_temp_dir_name},
+    which is typically set to your system temporary file directory.
 
     [?prefix] helps determine the name of the file. It will be the prefix
     concatenated with a random sequence of characters. If not specified,
@@ -729,7 +732,7 @@ type byte_order = Lwt_sys.byte_order = Little_endian | Big_endian
     (** Type of byte order *)
 
 val system_byte_order : byte_order
-  (** Same as {!Lwt_sys.byte_order}. *)
+  (** Same as {!val:Lwt_sys.byte_order}. *)
 
 (** {2 Low-level access to the internal buffer} *)
 
@@ -758,7 +761,7 @@ type direct_access = {
 }
 
 val direct_access : 'a channel -> (direct_access -> 'b Lwt.t) -> 'b Lwt.t
-  (** [direct_access ch f] passes to [f] a {!direct_access}
+  (** [direct_access ch f] passes to [f] a {!type:direct_access}
       structure. [f] must use it and update [da_ptr] to reflect how
       many bytes have been read/written. *)
 
@@ -772,7 +775,7 @@ val set_default_buffer_size : int -> unit
   (** Change the default buffer size.
 
       @raise Invalid_argument if the given size is smaller than [16]
-      or greater than [Sys.max_string_length] *)
+      or greater than {!Stdlib.Sys.max_string_length} *)
 
 (** {2 Deprecated} *)
 

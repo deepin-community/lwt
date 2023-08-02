@@ -3,22 +3,25 @@
 
 
 
-#include <lwt_config.h>
+#include "lwt_config.h"
 
 #if defined(LWT_ON_WINDOWS)
 
 #include <lwt_unix.h>
 
-#define CAML_NAME_SPACE
+#if OCAML_VERSION < 41300
+#define CAML_INTERNALS
+#endif
 
 #include <caml/alloc.h>
 #include <caml/fail.h>
 #include <caml/memory.h>
+#include <caml/osdeps.h>
 
 static HANDLE get_handle(value opt) {
   value fd;
-  if (Is_block(opt)) {
-    fd = Field(opt, 0);
+  if (Is_some(opt)) {
+    fd = Some_val(opt);
     if (Descr_kind_val(fd) == KIND_SOCKET) {
       win32_maperr(ERROR_INVALID_HANDLE);
       uerror("CreateProcess", Nothing);
@@ -29,7 +32,30 @@ static HANDLE get_handle(value opt) {
     return INVALID_HANDLE_VALUE;
 }
 
-#define string_option(opt) (Is_block(opt) ? String_val(Field(opt, 0)) : NULL)
+/* Ensures the handle [h] is inheritable. Returns the handle for the
+   child process in [hStd] and in [to_close] if it needs to be closed
+   after CreateProcess. */
+static int ensure_inheritable(HANDLE h /* in */,
+                              HANDLE * hStd /* out */,
+                              HANDLE * to_close /* out */)
+{
+  DWORD flags;
+  HANDLE hp;
+
+  if (h == INVALID_HANDLE_VALUE || h == NULL)
+    return 1;
+  if (! GetHandleInformation(h, &flags))
+    return 0;
+  hp = GetCurrentProcess();
+  if (! (flags & HANDLE_FLAG_INHERIT)) {
+    if (! DuplicateHandle(hp, h, hp, hStd, 0, TRUE, DUPLICATE_SAME_ACCESS))
+      return 0;
+    *to_close = *hStd;
+  } else {
+    *hStd = h;
+  }
+  return 1;
+}
 
 CAMLprim value lwt_process_create_process(value prog, value cmdline, value env,
                                           value cwd, value fds) {
@@ -38,18 +64,60 @@ CAMLprim value lwt_process_create_process(value prog, value cmdline, value env,
 
   STARTUPINFO si;
   PROCESS_INFORMATION pi;
+  DWORD flags = 0, err;
+  HANDLE hp, fd0, fd1, fd2;
+  HANDLE to_close0 = INVALID_HANDLE_VALUE, to_close1 = INVALID_HANDLE_VALUE,
+    to_close2 = INVALID_HANDLE_VALUE;
 
+  fd0 = get_handle(Field(fds, 0));
+  fd1 = get_handle(Field(fds, 1));
+  fd2 = get_handle(Field(fds, 2));
+
+  err = ERROR_SUCCESS;
   ZeroMemory(&si, sizeof(si));
   ZeroMemory(&pi, sizeof(pi));
   si.cb = sizeof(si);
   si.dwFlags = STARTF_USESTDHANDLES;
-  si.hStdInput = get_handle(Field(fds, 0));
-  si.hStdOutput = get_handle(Field(fds, 1));
-  si.hStdError = get_handle(Field(fds, 2));
 
-  if (!CreateProcess(string_option(prog), String_val(cmdline), NULL, NULL, TRUE,
-                     0, string_option(env), string_option(cwd), &si, &pi)) {
-    win32_maperr(GetLastError());
+  /* If needed, duplicate the handles fd1, fd2, fd3 to make sure they
+     are inheritable. */
+  if (! ensure_inheritable(fd0, &si.hStdInput, &to_close0) ||
+      ! ensure_inheritable(fd1, &si.hStdOutput, &to_close1) ||
+      ! ensure_inheritable(fd2, &si.hStdError, &to_close2)) {
+    err = GetLastError(); goto ret;
+  }
+
+
+#define string_option(opt) \
+  (Is_block(opt) ? caml_stat_strdup_to_os(String_val(Field(opt, 0))) : NULL)
+
+  char_os
+    *progs = string_option(prog),
+    *cmdlines = caml_stat_strdup_to_os(String_val(cmdline)),
+    *envs = string_option(env),
+    *cwds = string_option(cwd);
+
+#undef string_option
+
+  flags |= CREATE_UNICODE_ENVIRONMENT;
+  if (! CreateProcess(progs, cmdlines, NULL, NULL, TRUE, flags,
+                      envs, cwds, &si, &pi)) {
+    err = GetLastError();
+  }
+
+  caml_stat_free(progs);
+  caml_stat_free(cmdlines);
+  caml_stat_free(envs);
+  caml_stat_free(cwds);
+
+ret:
+/* Close the handles if we duplicated them above. */
+  if (to_close0 != INVALID_HANDLE_VALUE) CloseHandle(to_close0);
+  if (to_close1 != INVALID_HANDLE_VALUE) CloseHandle(to_close1);
+  if (to_close2 != INVALID_HANDLE_VALUE) CloseHandle(to_close2);
+
+  if (err != ERROR_SUCCESS) {
+    win32_maperr(err);
     uerror("CreateProcess", Nothing);
   }
 
