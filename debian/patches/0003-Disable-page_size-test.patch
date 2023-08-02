@@ -7,16 +7,16 @@ Subject: Disable page_size test
  1 file changed, 2 insertions(+)
 
 diff --git a/test/unix/test_lwt_bytes.ml b/test/unix/test_lwt_bytes.ml
-index 684eb55..7535cde 100644
+index 0bc62d8..3d5e397 100644
 --- a/test/unix/test_lwt_bytes.ml
 +++ b/test/unix/test_lwt_bytes.ml
-@@ -766,10 +766,12 @@ let suite = suite "lwt_bytes" [
+@@ -773,10 +773,12 @@ let suite = suite "lwt_bytes" [
        Lwt.return check
      end;
  
 +(*
      test "page_size" begin fun () ->
-       let sizes = [4096; 65536] in
+       let sizes = [4096; 16384; 65536] in
        Lwt.return (List.mem Lwt_bytes.page_size sizes)
      end;
 +*)

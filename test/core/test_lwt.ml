@@ -1803,6 +1803,54 @@ let async_tests = suite "async" [
 ]
 let suites = suites @ [async_tests]
 
+let dont_wait_tests = suite "dont_wait" [
+  test "fulfilled" begin fun () ->
+    let f_ran = ref false in
+    Lwt.dont_wait (fun () -> f_ran := true; Lwt.return ()) (fun _ -> ());
+    later (fun () -> !f_ran = true)
+  end;
+
+  test "f raises" begin fun () ->
+    let saw = ref None in
+    Lwt.dont_wait
+      (fun () -> raise Exception)
+      (fun exn -> saw := Some exn);
+    later (fun () -> !saw = Some Exception)
+  end;
+
+  test "rejected" begin fun () ->
+    let saw = ref None in
+    Lwt.dont_wait
+      (fun () -> Lwt.fail Exception)
+      (fun exn -> saw := Some exn);
+    later (fun () -> !saw = Some Exception)
+  end;
+
+  test "pending, fulfilled" begin fun () ->
+    let resolved = ref false in
+    let p, r = Lwt.wait () in
+    Lwt.dont_wait
+      (fun () ->
+        Lwt.bind p (fun () ->
+          resolved := true;
+          Lwt.return ()))
+      (fun _ -> ());
+    Lwt.wakeup r ();
+    later (fun () -> !resolved = true)
+  end;
+
+  test "pending, rejected" begin fun () ->
+    let saw = ref None in
+    let p, r = Lwt.wait () in
+    Lwt.dont_wait
+      (fun () -> p)
+      (fun exn -> saw := Some exn) ;
+    Lwt.wakeup_exn r Exception;
+    later (fun () -> !saw = Some Exception)
+  end;
+]
+let suites = suites @ [dont_wait_tests]
+
 let ignore_result_tests = suite "ignore_result" [
   test "fulfilled" begin fun () ->
     Lwt.ignore_result (Lwt.return ());
@@ -1892,15 +1940,32 @@ let join_tests = suite "join" [
 ]
 let suites = suites @ [join_tests]
 
+let list_init i f = Array.init i f |> Array.to_list
+
 let all_tests = suite "all" [
   test "empty" begin fun () ->
     let p = Lwt.all [] in
     state_is (Lwt.Return []) p
   end;
 
-  test "all fulfilled" begin fun () ->
+  test "all fulfilled (one)" begin fun () ->
+    let p = Lwt.all [Lwt.return 1] in
+    state_is (Lwt.Return [1]) p
+  end;
+
+  test "all fulfilled (two)" begin fun () ->
     let p = Lwt.all [Lwt.return 1; Lwt.return 2] in
     state_is (Lwt.Return [1; 2]) p
+  end;
+
+  test "all fulfilled (three)" begin fun () ->
+    let p = Lwt.all [Lwt.return 1; Lwt.return 2; Lwt.return 3] in
+    state_is (Lwt.Return [1; 2; 3]) p
+  end;
+
+  test "all fulfilled (long)" begin fun () ->
+    let p = Lwt.all (list_init 10 Lwt.return) in
+    state_is (Lwt.Return (list_init 10 (fun i->i))) p
   end;
 
   test "all rejected" begin fun () ->
@@ -1913,6 +1978,36 @@ let all_tests = suite "all" [
     let p = Lwt.all [Lwt.return 1; p] in
     Lwt.wakeup r 2;
     state_is (Lwt.Return [1; 2]) p
+  end;
+
+  test "pending twice physically equal, fulfilled" begin fun () ->
+    let p, r = Lwt.wait () in
+    let p = Lwt.all [p; p] in
+    Lwt.wakeup r 2;
+    state_is (Lwt.Return [2; 2]) p
+  end;
+
+  test "pending twice physically equal twice, fulfilled" begin fun () ->
+    let p, r = Lwt.wait () in
+    let q, s = Lwt.wait () in
+    let p = Lwt.all [p; p; q; q] in
+    Lwt.wakeup r 2;
+    Lwt.wakeup s 4;
+    state_is (Lwt.Return [2; 2; 4; 4]) p
+  end;
+
+  test "fulfilled and pending and fulfilled, fulfilled" begin fun () ->
+    let p, r = Lwt.wait () in
+    let p = Lwt.all [Lwt.return 1; p; Lwt.return 3] in
+    Lwt.wakeup r 2;
+    state_is (Lwt.Return [1; 2; 3]) p
+  end;
+
+  test "fulfilled and pending, fulfilled (long)" begin fun () ->
+    let p, r = Lwt.wait () in
+    let p = Lwt.all (list_init 10 Lwt.return @ [p]) in
+    Lwt.wakeup r 10;
+    state_is (Lwt.Return (list_init 11 (fun x->x))) p
   end;
 
   test "rejected and pending, fulfilled" begin fun () ->
@@ -2179,11 +2274,10 @@ let choose_tests = suite "choose" [
   end;
 
   test "multiple resolved" begin fun () ->
-    (* This is run in a loop to exercise the internal PRNG. *)
-    let outcomes = Array.make 3 0 in
+    (* This is run in a loop to check that it consistently returns the failed
+       result as per documentation. *)
     let rec repeat n =
-      if n <= 0 then ()
-      else
+      n <= 0 || begin
         let p =
           Lwt.choose
             [fst (Lwt.wait ());
@@ -2191,19 +2285,15 @@ let choose_tests = suite "choose" [
              Lwt.fail Exception;
              Lwt.return "bar"]
         in
-        begin match Lwt.state p with
-        | Lwt.Return "foo" -> outcomes.(0) <- outcomes.(0) + 1
-        | Lwt.Fail Exception -> outcomes.(1) <- outcomes.(1) + 1
-        | Lwt.Return "bar" -> outcomes.(2) <- outcomes.(2) + 1
+        match Lwt.state p with
+        | Lwt.Return "foo" -> false
+        | Lwt.Fail Exception -> repeat (n - 1)
+        | Lwt.Return "bar" -> false
         | _ -> assert false
         end [@ocaml.warning "-4"];
-        repeat (n - 1)
     in
-    let count = 1000 in
-    repeat count;
-    Lwt.return
-      (outcomes.(0) > 0 && outcomes.(1) > 0 && outcomes.(2) > 0 &&
-       outcomes.(0) + outcomes.(1) + outcomes.(2) = count)
+    let count = 100 in
+    Lwt.return (repeat count)
   end;
 
   test "pending" begin fun () ->
@@ -2720,6 +2810,94 @@ let protected_tests = suite "protected" [
 ]
 let suites = suites @ [protected_tests]
 
+let cancelable_tests = suite "wrap_in_cancelable" [
+  test "fulfilled" begin fun () ->
+    let p = Lwt.wrap_in_cancelable (Lwt.return ()) in
+    Lwt.return (Lwt.state p = Lwt.Return ())
+  end;
+
+  test "rejected" begin fun () ->
+    let p = Lwt.wrap_in_cancelable (Lwt.fail Exception) in
+    Lwt.return (Lwt.state p = Lwt.Fail Exception)
+  end;
+
+  test "pending(task)" begin fun () ->
+    let p, _ = Lwt.task () in
+    let p' = Lwt.wrap_in_cancelable p in
+    Lwt.return (Lwt.state p = Lwt.Sleep && Lwt.state p' = Lwt.Sleep)
+  end;
+
+  test "pending(task), fulfilled" begin fun () ->
+    let p, r = Lwt.task () in
+    let p' = Lwt.wrap_in_cancelable p in
+    Lwt.wakeup r "foo";
+    Lwt.return (Lwt.state p = Lwt.Return "foo" && Lwt.state p' = Lwt.Return "foo")
+  end;
+
+  test "pending(task), canceled" begin fun () ->
+    let p, _ = Lwt.task () in
+    let p' = Lwt.wrap_in_cancelable p in
+    Lwt.cancel p';
+    Lwt.return (Lwt.state p = Lwt.Fail Lwt.Canceled && Lwt.state p' = Lwt.Fail Lwt.Canceled)
+  end;
+
+  test "pending(wait)" begin fun () ->
+    let p, _ = Lwt.wait () in
+    let p' = Lwt.wrap_in_cancelable p in
+    Lwt.return (Lwt.state p = Lwt.Sleep && Lwt.state p' = Lwt.Sleep)
+  end;
+
+  test "pending(wait), fulfilled" begin fun () ->
+    let p, r = Lwt.wait () in
+    let p' = Lwt.wrap_in_cancelable p in
+    Lwt.wakeup r "foo";
+    Lwt.return (Lwt.state p = Lwt.Return "foo" && Lwt.state p' = Lwt.Return "foo")
+  end;
+
+  test "pending(wait), canceled" begin fun () ->
+    let p, _ = Lwt.wait () in
+    let p' = Lwt.wrap_in_cancelable p in
+    Lwt.cancel p';
+    Lwt.return (Lwt.state p = Lwt.Sleep && Lwt.state p' = Lwt.Fail Lwt.Canceled)
+  end;
+
+  test "pending(task), canceled, fulfilled" begin fun () ->
+    let p, r = Lwt.task () in
+    let p' = Lwt.wrap_in_cancelable p in
+    Lwt.cancel p';
+    Lwt.wakeup r "foo";
+    Lwt.return
+      (Lwt.state p = Lwt.Fail Lwt.Canceled && Lwt.state p' = Lwt.Fail Lwt.Canceled)
+  end;
+
+  test "pending(wait), canceled, fulfilled" begin fun () ->
+    let p, r = Lwt.wait () in
+    let p' = Lwt.wrap_in_cancelable p in
+    Lwt.cancel p';
+    Lwt.wakeup r "foo";
+    Lwt.return
+      (Lwt.state p = Lwt.Return "foo" && Lwt.state p' = Lwt.Fail Lwt.Canceled)
+  end;
+
+  (* Implementation detail: [p' = Lwt.wrap_in_cancelable _] can still be
+     resolved if it becomes a proxy. *)
+  test "pending, proxy" begin fun () ->
+    let p1, r1 = Lwt.task () in
+    let p2 = Lwt.wrap_in_cancelable p1 in
+
+    (* Make p2 a proxy for p4; p3 is just needed to suspend the bind, in order
+       to callback the code that makes p2 a proxy. *)
+    let p3, r3 = Lwt.wait () in
+    let _ = Lwt.bind p3 (fun () -> p2) in
+    Lwt.wakeup r3 ();
+
+    (* It should now be possible to resolve p2 by resolving p1. *)
+    Lwt.wakeup r1 "foo";
+    Lwt.return (Lwt.state p2 = Lwt.Return "foo")
+  end;
+]
+let suites = suites @ [cancelable_tests]
+
 let no_cancel_tests = suite "no_cancel" [
   test "fulfilled" begin fun () ->
     let p = Lwt.no_cancel (Lwt.return ()) in
@@ -2799,31 +2977,29 @@ let pick_tests = suite "pick" [
   end;
 
   test "multiple resolved" begin fun () ->
-    (* This is run in a loop to exercise the internal PRNG. *)
-    let outcomes = Array.make 3 0 in
+    (* This is run in a loop to check that it consistently returns the failed
+       result as per documentation. *)
     let rec repeat n =
-      if n <= 0 then ()
-      else
+      n <= 0 || begin
+        let (waiter, _) = Lwt.task () in
         let p =
           Lwt.pick
-            [fst (Lwt.wait ());
+            [waiter;
              Lwt.return "foo";
              Lwt.fail Exception;
              Lwt.return "bar"]
         in
-        begin match Lwt.state p with
-        | Lwt.Return "foo" -> outcomes.(0) <- outcomes.(0) + 1
-        | Lwt.Fail Exception -> outcomes.(1) <- outcomes.(1) + 1
-        | Lwt.Return "bar" -> outcomes.(2) <- outcomes.(2) + 1
+        match Lwt.state p with
+        | Lwt.Return "foo" -> false
+        | Lwt.Fail Exception ->
+            Lwt.state waiter = Lwt.Fail Lwt.Canceled
+            && repeat (n - 1)
+        | Lwt.Return "bar" -> false
         | _ -> assert false
         end [@ocaml.warning "-4"];
-        repeat (n - 1)
     in
-    let count = 1000 in
-    repeat count;
-    Lwt.return
-      (outcomes.(0) > 0 && outcomes.(1) > 0 && outcomes.(2) > 0 &&
-       outcomes.(0) + outcomes.(1) + outcomes.(2) = count)
+    let count = 100 in
+    Lwt.return (repeat count)
   end;
 
   test "pending" begin fun () ->
@@ -3864,18 +4040,18 @@ let suites = suites @ [infix_operator_tests]
    testing the full syntax to avoid large dependencies for the test suite. *)
 let ppx_let_tests = suite "ppx_let" [
   test "return" begin fun () ->
-    let p = Lwt.Infix.Let_syntax.return () in
+    let p = Lwt.Let_syntax.Let_syntax.return () in
     state_is (Lwt.Return ()) p
   end;
 
   test "map" begin fun () ->
-    let p = Lwt.Infix.Let_syntax.map (Lwt.return 1) ~f:(fun x -> x + 1) in
+    let p = Lwt.Let_syntax.Let_syntax.map (Lwt.return 1) ~f:(fun x -> x + 1) in
     state_is (Lwt.Return 2) p
   end;
 
   test "bind" begin fun () ->
     let p =
-      Lwt.Infix.Let_syntax.bind
+      Lwt.Let_syntax.Let_syntax.bind
         (Lwt.return 1) ~f:(fun x -> Lwt.return (x + 1))
     in
     state_is (Lwt.Return 2) p
@@ -3894,7 +4070,7 @@ let ppx_let_tests = suite "ppx_let" [
         end
       end
     in
-    let x : (module Local.Empty) = (module Lwt.Infix.Let_syntax.Open_on_rhs) in
+    let x : (module Local.Empty) = (module Lwt.Let_syntax.Let_syntax.Open_on_rhs) in
     ignore x;
     Lwt.return true
   end;
@@ -4259,3 +4435,35 @@ let callback_list_tests = suite "callback cleanup" [
   end;
 ]
 let suites = suites @ [callback_list_tests]
+
+(*
+
+   Lwt should preserve tail-recursion. When a recursive function [f]
+   lives in the [Lwt] monad, a programmer must assume that [f] is only
+   call in tail position in [Lwt.bind].
+
+   Given that robustness to stack overflows cannot be ignored by OCaml
+   programmers, this property should be documented, be part of
+   [Lwt] specification, and probably never be broken in the future.
+
+   This test tries to ensure that [Lwt.bind x f] indeed calls [f] only
+   in tail position.
+
+*)
+
+let tailrec_tests = suite "tailrec" [
+  test "tailrec" begin fun () ->
+    let rec aux f accu n =
+      if n = 0 then
+        Lwt.return accu
+      else
+        Lwt.bind (f n) (fun s -> aux f (s + accu) (n - 1))
+    in
+    let f n = Lwt.return n in
+    try
+      ignore (aux f 0 10000000);
+      Lwt.return true
+    with _ -> Lwt.return false
+  end;
+]
+let suites = suites @ [tailrec_tests]

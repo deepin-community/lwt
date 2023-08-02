@@ -122,7 +122,6 @@ let openfile_tests = [
   test "openfile: O_CLOEXEC not given" ~only_if:(fun () -> not Sys.win32)
     (fun () -> test_cloexec ~closed:false []);
 
-#if OCAML_VERSION >= (4, 05, 0)
   test "openfile: O_KEEPEXEC" ~only_if:(fun () -> not Sys.win32)
     (fun () -> test_cloexec ~closed:false [Unix.O_KEEPEXEC]);
 
@@ -131,7 +130,6 @@ let openfile_tests = [
 
   test "openfile: O_KEEPEXEC, O_CLOEXEC" ~only_if:(fun () -> not Sys.win32)
     (fun () -> test_cloexec ~closed:true [Unix.O_KEEPEXEC; Unix.O_CLOEXEC]);
-#endif
 ]
 
 let utimes_tests = [
@@ -203,15 +201,13 @@ let readdir_tests =
 
   let equal, subset =
     let module StringSet = Set.Make (String) in
-    (* Necessary before 4.02. *)
-    let of_list l =
-      List.fold_left (fun set n -> StringSet.add n set) StringSet.empty l in
+    (fun filenames filenames' ->
+      StringSet.equal
+       (StringSet.of_list filenames) (StringSet.of_list filenames')),
 
     (fun filenames filenames' ->
-      StringSet.equal (of_list filenames) (of_list filenames')),
-
-    (fun filenames filenames' ->
-      StringSet.subset (of_list filenames) (of_list filenames'))
+      StringSet.subset
+       (StringSet.of_list filenames) (StringSet.of_list filenames'))
   in
 
   let read_all directory =
@@ -421,7 +417,7 @@ let readv_tests =
              `Bigarray (1, 4, 1)]
         in
 
-        let read_fd, write_fd = Lwt_unix.pipe () in
+        let read_fd, write_fd = Lwt_unix.pipe ~cloexec:true () in
 
         Lwt_list.for_all_s (fun t -> t ())
           [writer write_fd "foobar";
@@ -435,7 +431,7 @@ let readv_tests =
              `Bigarray (1, 4, 1)]
         in
 
-        let read_fd, write_fd = Lwt_unix.pipe () in
+        let read_fd, write_fd = Lwt_unix.pipe ~cloexec:true () in
         Lwt_unix.set_blocking read_fd true;
 
         Lwt_list.for_all_s (fun t -> t ())
@@ -450,7 +446,7 @@ let readv_tests =
         ]
       in
 
-      let read_fd, write_fd = Lwt_unix.pipe () in
+      let read_fd, write_fd = Lwt_unix.pipe ~cloexec:true () in
       Lwt_unix.set_blocking read_fd true;
 
       Lwt_unix.write_string write_fd "foo" 0 3 >>= fun _ ->
@@ -473,7 +469,7 @@ let readv_tests =
         in
         Lwt_unix.IO_vectors.drop io_vectors 2;
 
-        let read_fd, write_fd = Lwt_unix.pipe () in
+        let read_fd, write_fd = Lwt_unix.pipe ~cloexec:true () in
 
         Lwt_list.for_all_s (fun t -> t ())
           [writer write_fd "foobar";
@@ -500,14 +496,14 @@ let readv_tests =
 
         let expected = String.make limit 'a' in
 
-        let read_fd, write_fd = Lwt_unix.pipe () in
+        let read_fd, write_fd = Lwt_unix.pipe ~cloexec:true () in
 
         Lwt_list.for_all_s (fun t -> t ())
           [writer write_fd (expected ^ "a");
            reader read_fd io_vectors underlying limit (expected ^ "_")]);
 
     test "readv: windows" ~only_if:(fun () -> Sys.win32) begin fun () ->
-      let read_fd, write_fd = Lwt_unix.pipe () in
+      let read_fd, write_fd = Lwt_unix.pipe ~cloexec:true () in
 
       let io_vectors, underlying =
         make_io_vectors [
@@ -590,7 +586,7 @@ let writev_tests =
              `Bigarray ("baz", 0, 3)]
         in
 
-        let read_fd, write_fd = Lwt_unix.pipe () in
+        let read_fd, write_fd = Lwt_unix.pipe ~cloexec:true () in
 
         Lwt_list.for_all_s (fun t -> t ())
           [writer ~blocking:false write_fd io_vectors 9;
@@ -605,7 +601,7 @@ let writev_tests =
              `Bigarray ("baz", 0, 3)]
         in
 
-        let read_fd, write_fd = Lwt_unix.pipe () in
+        let read_fd, write_fd = Lwt_unix.pipe ~cloexec:true () in
         Lwt_unix.set_blocking write_fd true;
 
         Lwt_list.for_all_s (fun t -> t ())
@@ -620,7 +616,7 @@ let writev_tests =
         ]
       in
 
-      let read_fd, write_fd = Lwt_unix.pipe () in
+      let read_fd, write_fd = Lwt_unix.pipe ~cloexec:true () in
       Lwt_unix.set_blocking write_fd true;
 
       let retained = Lwt_unix.retained io_vectors in
@@ -637,7 +633,7 @@ let writev_tests =
         let io_vectors =
           make_io_vectors [`Bytes ("foo", 1, 2); `Bigarray ("bar", 1, 2)] in
 
-        let read_fd, write_fd = Lwt_unix.pipe () in
+        let read_fd, write_fd = Lwt_unix.pipe ~cloexec:true () in
 
         Lwt_list.for_all_s (fun t -> t ())
           [writer write_fd io_vectors 4;
@@ -652,7 +648,7 @@ let writev_tests =
              `Bigarray ("baz", 0, 3)]
         in
 
-        let read_fd, write_fd = Lwt_unix.pipe () in
+        let read_fd, write_fd = Lwt_unix.pipe ~cloexec:true () in
 
         let initially_empty = Lwt_unix.IO_vectors.is_empty io_vectors in
 
@@ -685,7 +681,7 @@ let writev_tests =
              `Bigarray ("bar", 0, 0)]
         in
 
-        let read_fd, write_fd = Lwt_unix.pipe () in
+        let read_fd, write_fd = Lwt_unix.pipe ~cloexec:true () in
 
         let initially_empty = Lwt_unix.IO_vectors.is_empty io_vectors in
 
@@ -705,7 +701,7 @@ let writev_tests =
         let negative_length' = make_io_vectors [`Bigarray ("foo", 0, -1)] in
         let out_of_bounds' = make_io_vectors [`Bigarray ("foo", 1, 3)] in
 
-        let read_fd, write_fd = Lwt_unix.pipe () in
+        let read_fd, write_fd = Lwt_unix.pipe ~cloexec:true () in
 
         let writer io_vectors =
           fun () ->
@@ -753,7 +749,7 @@ let writev_tests =
           loop (limit + 1)
         in
 
-        let read_fd, write_fd = Lwt_unix.pipe () in
+        let read_fd, write_fd = Lwt_unix.pipe ~cloexec:true () in
 
         Lwt_list.for_all_s (fun t -> t ())
           [writer write_fd io_vectors limit;
@@ -764,7 +760,7 @@ let writev_tests =
         let io_vectors = make_io_vectors [`Bytes ("foo", 0, 3)] in
         Lwt_unix.IO_vectors.drop io_vectors (-1);
 
-        let read_fd, write_fd = Lwt_unix.pipe () in
+        let read_fd, write_fd = Lwt_unix.pipe ~cloexec:true () in
 
         Lwt_list.for_all_s (fun t -> t ())
           [writer write_fd io_vectors 3;
@@ -782,7 +778,7 @@ let writev_tests =
         ]
       in
 
-      let read_fd, write_fd = Lwt_unix.pipe () in
+      let read_fd, write_fd = Lwt_unix.pipe ~cloexec:true () in
 
       Lwt_list.for_all_s (fun t -> t ()) [
         writer ~close:false write_fd io_vectors 3;
@@ -796,7 +792,7 @@ let writev_tests =
 let send_recv_msg_tests = [
   test "send_msg, recv_msg" ~only_if:(fun () -> not Sys.win32) begin fun () ->
     let socket_1, socket_2 = Lwt_unix.(socketpair PF_UNIX SOCK_STREAM 0) in
-    let pipe_read, pipe_write = Lwt_unix.pipe () in
+    let pipe_read, pipe_write = Lwt_unix.pipe ~cloexec:true () in
 
     let source_buffer = Bytes.of_string "_foo_bar_" in
     let source_iovecs = Lwt_unix.IO_vectors.create () in
@@ -854,7 +850,7 @@ let send_recv_msg_tests = [
       begin fun () ->
 
     let socket_1, socket_2 = Lwt_unix.(socketpair PF_UNIX SOCK_STREAM 0) in
-    let pipe_read, pipe_write = Lwt_unix.pipe () in
+    let pipe_read, pipe_write = Lwt_unix.pipe ~cloexec:true () in
 
     let source_buffer = Lwt_bytes.of_string "_foo_bar_" in
     let source_iovecs = Lwt_bytes.[
@@ -929,7 +925,13 @@ let send_recv_msg_tests = [
 
 let bind_tests_address = Unix.(ADDR_INET (inet_addr_loopback, 56100))
 
-let bind_tests = [
+let bind_tests =
+  let directory_exists dir =
+    try Sys.is_directory dir
+    with Sys_error _ -> false
+  in
+
+  [
   test "bind: basic"
     (fun () ->
       let socket = Lwt_unix.(socket PF_INET SOCK_STREAM 0) in
@@ -945,7 +947,8 @@ let bind_tests = [
 
       Lwt.return (address' = bind_tests_address));
 
-  test "bind: Unix domain" ~only_if:(fun () -> not Sys.win32)
+  test "bind: Unix domain" ~only_if:(fun () -> not Sys.win32 &&
+                                               not (directory_exists "/hurd"))
     (fun () ->
       let socket = Lwt_unix.(socket PF_UNIX SOCK_STREAM 0) in
 
@@ -1166,6 +1169,82 @@ let pread_tests ~blocking =
       Lwt.return_true);
 ]
 
+let dup_tests ~blocking =
+  let test_file = test_filename "test_dup" in
+  let file_contents = "01234567890123456789" in
+  let len = String.length file_contents in
+  let buf = Bytes.make len '\x00' in
+  let blocking_string =
+    if blocking then
+      " blocking"
+    else
+      " nonblocking"
+  in
+  [
+  test ~sequential:true ("dup on socket" ^ blocking_string)
+    (fun () ->
+      let s1, s2 =
+        if Sys.win32 then Lwt_unix.socketpair Unix.PF_INET6 Unix.SOCK_STREAM 0
+        else Lwt_unix.socketpair Unix.PF_UNIX Unix.SOCK_STREAM 0
+      in
+      if not blocking then Lwt_unix.set_blocking ~set_flags:false s1 false;
+      let s1' = Lwt_unix.dup s1 in
+      Lwt_unix.blocking s1
+      >>= fun s1_is_blocking ->
+      Lwt_unix.blocking s1'
+      >>= fun s1'_is_blocking ->
+      assert(s1_is_blocking = s1'_is_blocking);
+      Lwt_unix.write_string s1 file_contents 0 len
+      >>= fun n ->
+      assert(n = len);
+      Lwt_unix.read s2 buf 0 len
+      >>= fun n ->
+      assert(n = len);
+      let read = Bytes.to_string buf in
+      assert(read = file_contents);
+      Lwt_unix.write_string s1' file_contents 0 len
+      >>= fun n ->
+      assert(n = len);
+      Lwt_unix.read s2 buf 0 len
+      >>= fun n ->
+      assert(n = len);
+      let read = Bytes.to_string buf in
+      assert(read = file_contents);
+      Lwt_list.iter_p Lwt_unix.close [s1; s1'; s2] >>= fun () ->
+      Lwt.return_true);
+
+    test ~sequential:true ("dup on file" ^ blocking_string)
+    (fun () ->
+      Lwt_unix.openfile test_file [O_RDWR; O_TRUNC; O_CREAT] 0o666
+      >>= fun fd ->
+      if not blocking then Lwt_unix.set_blocking ~set_flags:false fd false;
+      let fd' = Lwt_unix.dup fd in
+      Lwt_unix.blocking fd
+      >>= fun fd_is_blocking ->
+      Lwt_unix.blocking fd'
+      >>= fun fd'_is_blocking ->
+      assert(fd_is_blocking = fd'_is_blocking);
+      Lwt_unix.write_string fd file_contents 0 len
+      >>= fun n ->
+      assert(n = len);
+      Lwt_unix.lseek fd 0 Lwt_unix.SEEK_SET >>= fun _pos ->
+      let buf = Bytes.make (String.length file_contents) '\x00' in
+      Lwt_unix.read fd buf 0 (String.length file_contents) >>= fun n ->
+      assert(n = (String.length file_contents));
+      let read = Bytes.to_string buf in
+      assert (read = file_contents);
+      Lwt_unix.write_string fd' file_contents 0 len
+      >>= fun n ->
+      assert(n = len);
+      Lwt_unix.lseek fd' 0 Lwt_unix.SEEK_SET >>= fun _pos ->
+      let buf = Bytes.make (String.length file_contents) '\x00' in
+      Lwt_unix.read fd' buf 0 (String.length file_contents) >>= fun n ->
+      assert(n = (String.length file_contents));
+      let read = Bytes.to_string buf in
+      assert (read = file_contents);
+      Lwt.return_true);
+]
+
 let suite =
   suite "lwt_unix"
     (wait_tests @
@@ -1181,5 +1260,7 @@ let suite =
      lwt_preemptive_tests @
      lwt_user_tests @
      pread_tests ~blocking:true @
-     pread_tests ~blocking:false
+     pread_tests ~blocking:false @
+     dup_tests ~blocking:true @
+     dup_tests ~blocking:false
     )

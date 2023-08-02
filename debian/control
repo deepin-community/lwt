@@ -8,22 +8,21 @@ Build-Depends:
  libev-dev,
  ocaml-findlib,
  ocaml-dune,
- libdune-ocaml-dev,
+ libdune-ocaml-dev (>= 3.9.0),
  cppo,
  libfindlib-ocaml-dev,
  libreact-ocaml-dev,
  libresult-ocaml-dev,
  libmmap-ocaml-dev,
- libmigrate-parsetree-ocaml-dev (>= 1.5.0),
- libppx-tools-versioned-ocaml-dev (>= 5.3.0),
+ libppxlib-ocaml-dev,
  libocplib-endian-ocaml-dev,
  libseq-ocaml-dev,
  ocaml-compiler-libs,
  ocaml-nox
-Standards-Version: 4.5.0
+Standards-Version: 4.6.2
 Rules-Requires-Root: no
 Section: ocaml
-Homepage: http://ocsigen.org/lwt
+Homepage: https://ocsigen.org/lwt
 Vcs-Browser: https://salsa.debian.org/ocaml-team/lwt
 Vcs-Git: https://salsa.debian.org/ocaml-team/lwt.git
 

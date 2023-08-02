@@ -115,7 +115,7 @@
      A resolved promise is either "fulfilled" with a value, or "rejected" with
      an exception. The state of a resolved promise will never change again: a
      resolved promise is immutable. A resolved promise is basically equivalent
-     to an [('a, exn) Pervasives.result]. Resolved promises are produced in two
+     to an [('a, exn) Stdlib.result]. Resolved promises are produced in two
      ways:
 
      - [Lwt.return], [Lwt.fail], and related functions, produce "trivial"
@@ -344,15 +344,6 @@
 
 
 
-(* Suppress warning 4, "fragile pattern matching," in this file only, due to
-
-     https://caml.inria.fr/mantis/view.php?id=7451
-
-   This can be removed if/when Lwt requires a minimum OCaml version 4.05. *)
-[@@@ocaml.warning "-4"]
-
-
-
 (* [Lwt_sequence] is deprecated – we don't want users outside Lwt using it.
    However, it is still used internally by Lwt. So, briefly disable warning 3
    ("deprecated"), and create a local, non-deprecated alias for
@@ -361,8 +352,6 @@
 [@@@ocaml.warning "-3"]
 module Lwt_sequence = Lwt_sequence
 [@@@ocaml.warning "+3"]
-
-
 
 (* Some sequence-associated storage types
 
@@ -489,7 +478,7 @@ struct
 
      - The type parameters of ['a resolved_state] guarantee that it is either
        [Fulfilled _] or [Rejected _]. So, it is equivalent to
-       [('a, exn) Pervasives.result], and, indeed, should have an identical
+       [('a, exn) Stdlib.result], and, indeed, should have an identical
        memory representation.
 
      - As per the Overview, there are regular callbacks and cancel callbacks.
@@ -585,9 +574,9 @@ struct
 
   (* Internal name of the public [+'a Lwt.result]. The public name is defined
      later in the module. This is to avoid potential confusion with
-     [Pervasives.result]/[Result.result], as the public name would not be
+     [Stdlib.result]/[Result.result], as the public name would not be
      prefixed with [Lwt.] inside this file. *)
-  type +'a lwt_result = ('a, exn) Result.result
+  type +'a lwt_result = ('a, exn) Result.t
 
   (* This could probably save an allocation by using [Obj.magic]. *)
   let state_of_result = function
@@ -627,11 +616,8 @@ struct
      If multiple [Proxy _] links are traversed, [underlying] updates all the
      proxies to point immediately to their final underlying promise. *)
   let rec underlying
-      : 'u 'c. ('a, 'u, 'c) promise -> ('a, underlying, 'c) promise =
-    fun
-      (type u)
-      (type c)
-      (p : ('a, u, c) promise) ->
+      : type u c. ('a, u, c) promise -> ('a, underlying, c) promise =
+    fun p ->
 
     match p.state with
     | Fulfilled _ -> (p : (_, underlying, _) promise)
@@ -834,8 +820,8 @@ sig
   val add_explicitly_removable_callback_to_each_of :
     'a t list -> 'a regular_callback -> unit
   val add_explicitly_removable_callback_and_give_remove_function :
-    'a t list -> 'a regular_callback -> (unit -> unit)
-  val add_cancel_callback : 'a callbacks -> (unit -> unit) -> unit
+    'a t list -> 'a regular_callback -> cancel_callback
+  val add_cancel_callback : 'a callbacks -> cancel_callback -> unit
   val merge_callbacks : from:'a callbacks -> into:'a callbacks -> unit
 end =
 struct
@@ -1007,10 +993,6 @@ struct
       clear_explicitly_removable_callback_cell cell ~originally_added_to:ps
 
   let add_cancel_callback callbacks f =
-    (* Ugly cast :( *)
-    let cast_cancel_callback : (unit -> unit) -> cancel_callback = Obj.magic in
-    let f = cast_cancel_callback f in
-
     let node = Cancel_callback_list_callback (!current_storage, f) in
 
     callbacks.cancel_callbacks <-
@@ -1496,8 +1478,8 @@ sig
   val return_false : bool t
   val return_none : _ option t
   val return_some : 'a -> 'a option t
-  val return_ok : 'a -> ('a, _) Result.result t
-  val return_error : 'e -> (_, 'e) Result.result t
+  val return_ok : 'a -> ('a, _) Result.t t
+  val return_error : 'e -> (_, 'e) Result.t t
   val return_nil : _ list t
 
   val fail_with : string -> _ t
@@ -2440,9 +2422,24 @@ end
 include Sequential_composition
 
 
+(* This belongs with the [protected] and such, but it depends on primitives from
+   [Sequential_composition]. *)
+let wrap_in_cancelable p =
+ let Internal p_internal = to_internal_promise p in
+ let p_underlying = underlying p_internal in
+ match p_underlying.state with
+ | Fulfilled _ -> p
+ | Rejected _ -> p
+ | Pending _ ->
+   let p', r = task () in
+   on_cancel p' (fun () -> cancel p);
+   on_any p (wakeup r) (wakeup_exn r);
+   p'
+
 
 module Concurrent_composition :
 sig
+  val dont_wait : (unit -> _ t) -> (exn -> unit) -> unit
   val async : (unit -> _ t) -> unit
   val ignore_result : _ t -> unit
 
@@ -2460,6 +2457,26 @@ sig
 end =
 struct
   external reraise : exn -> 'a = "%reraise"
+
+  let dont_wait f h =
+    let p = try f () with exn -> fail exn in
+    let Internal p = to_internal_promise p in
+
+    match (underlying p).state with
+    | Fulfilled _ ->
+      ()
+    | Rejected exn ->
+      h exn
+
+    | Pending p_callbacks ->
+      let callback result =
+        match result with
+        | Fulfilled _ ->
+          ()
+        | Rejected exn ->
+          h exn
+      in
+      add_implicitly_removed_callback p_callbacks callback
 
   let async f =
     let p = try f () with exn -> fail exn in
@@ -2571,46 +2588,71 @@ struct
 
     attach_callback_or_resolve_immediately ps
 
+  (* this is 3 words, smaller than the 2 times 2 words a pair of references
+     would take. *)
+  type ('a,'b) pair = {
+    mutable x1: 'a option;
+    mutable x2: 'b option;
+  }
+
   let both p1 p2 =
-    let v1 = ref None in
-    let v2 = ref None in
-    let p1' = bind p1 (fun v -> v1 := Some v; return_unit) in
-    let p2' = bind p2 (fun v -> v2 := Some v; return_unit) in
+    let pair = {x1 = None; x2 = None} in
+    let p1' = bind p1 (fun v -> pair.x1 <- Some v; return_unit) in
+    let p2' = bind p2 (fun v -> pair.x2 <- Some v; return_unit) in
     join [p1'; p2'] |> map (fun () ->
-      match !v1, !v2 with
+      match pair.x1, pair.x2 with
       | Some v1, Some v2 -> v1, v2
       | _ -> assert false)
 
   let all ps =
-    let vs = Array.make (List.length ps) None in
-    ps
-    |> List.mapi (fun index p ->
-      bind p (fun v -> vs.(index) <- Some v; return_unit))
-    |> join
-    |> map (fun () ->
-      vs
-      |> Array.map (fun v ->
-        match v with
-        | Some v -> v
-        | None -> assert false)
-      |> Array.to_list)
-
-
+    match ps with
+    | [] -> return_nil
+    | [x] -> map (fun y -> [y]) x
+    | [x; y] -> map (fun (x, y) -> [x; y]) (both x y)
+    | _ ->
+      let vs = Array.make (List.length ps) None in
+      ps
+      |> List.mapi (fun index p ->
+        bind p (fun v -> vs.(index) <- Some v; return_unit))
+      |> join
+      |> map (fun () ->
+          let rec to_list_unopt i acc =
+            if i < 0 then
+              acc
+            else
+              match Array.unsafe_get vs i with
+              | None -> assert false
+              | Some x -> to_list_unopt (i - 1) (x::acc)
+          in
+          to_list_unopt (Array.length vs - 1) [])
 
   (* Maintainer's note: the next few functions are helpers for [choose] and
      [pick]. Perhaps they should be factored into some kind of generic
      [choose]/[pick] implementation, which may actually be optimal anyway with
      Flambda. *)
 
-  let count_resolved_promises_in (ps : _ t list) =
-    let accumulate total p =
-      let Internal p = to_internal_promise p in
-      match (underlying p).state with
-      | Fulfilled _ -> total + 1
-      | Rejected _ -> total + 1
-      | Pending _ -> total
+  let count_resolved_promises_in (ps : 'a t list) =
+    let rec count_and_gather_rejected total rejected ps =
+       match ps with
+       | [] -> Result.Error (total, rejected)
+       | p :: ps ->
+            let Internal q = to_internal_promise p in
+            match (underlying q).state with
+            | Fulfilled _ -> count_and_gather_rejected total rejected ps
+            | Rejected _ -> count_and_gather_rejected (total + 1) (p :: rejected) ps
+            | Pending _ -> count_and_gather_rejected total rejected ps
     in
-    List.fold_left accumulate 0 ps
+    let rec count_fulfilled total ps =
+       match ps with
+       | [] -> Result.Ok total
+       | p :: ps ->
+            let Internal q = to_internal_promise p in
+            match (underlying q).state with
+            | Fulfilled _ -> count_fulfilled (total + 1) ps
+            | Rejected _ -> count_and_gather_rejected 1 [p] ps
+            | Pending _ -> count_fulfilled total ps
+    in
+    count_fulfilled 0 ps
 
   (* Evaluates to the [n]th promise in [ps], among only those promises in [ps]
      that are resolved. The caller is expected to ensure that there are at
@@ -2664,7 +2706,7 @@ struct
       invalid_arg
         "Lwt.choose [] would return a promise that is pending forever";
     match count_resolved_promises_in ps with
-    | 0 ->
+    | Result.Ok 0 ->
       let p = new_pending ~how_to_cancel:(propagate_cancel_to_several ps) in
 
       let callback result =
@@ -2678,17 +2720,20 @@ struct
 
       to_public_promise p
 
-    | 1 ->
+    | Result.Ok 1 ->
       nth_resolved ps 0
 
-    | n ->
+    | Result.Ok n ->
+      nth_resolved ps (Random.State.int (Lazy.force prng) n)
+
+    | Result.Error (n, ps) ->
       nth_resolved ps (Random.State.int (Lazy.force prng) n)
 
   let pick ps =
     if ps = [] then
       invalid_arg "Lwt.pick [] would return a promise that is pending forever";
     match count_resolved_promises_in ps with
-    | 0 ->
+    | Ok 0 ->
       let p = new_pending ~how_to_cancel:(propagate_cancel_to_several ps) in
 
       let callback result =
@@ -2703,12 +2748,16 @@ struct
 
       to_public_promise p
 
-    | 1 ->
+    | Ok 1 ->
       nth_resolved_and_cancel_pending ps 0
 
-    | n ->
+    | Ok n ->
       nth_resolved_and_cancel_pending ps
         (Random.State.int (Lazy.force prng) n)
+
+    | Error (n, qs) ->
+      List.iter cancel ps;
+      nth_resolved qs (Random.State.int (Lazy.force prng) n)
 
 
 
@@ -2992,6 +3041,7 @@ sig
   val wakeup_paused : unit -> unit
   val paused_count : unit -> int
   val register_pause_notifier : (int -> unit) -> unit
+  val abandon_paused : unit -> unit
 
   (* Internal interface for other modules in Lwt *)
   val poll : 'a t -> 'a option
@@ -3087,21 +3137,16 @@ struct
 
   let register_pause_notifier f = pause_hook := f
 
+  let abandon_paused () =
+    Lwt_sequence.clear paused;
+    paused_count := 0
+
   let paused_count () = !paused_count
 end
 include Miscellaneous
 
-
-
-module Infix =
+module Let_syntax =
 struct
-  let (>>=) = bind
-  let (=<<) f p = bind p f
-  let (>|=) p f = map f p
-  let (=|<) = map
-  let (<&>) p p' = join [p; p']
-  let (<?>) p p' = choose [p; p']
-
   module Let_syntax =
   struct
     let return = return
@@ -3114,7 +3159,19 @@ struct
     end
   end
 end
-include Infix
+
+module Infix =
+struct
+  let (>>=) = bind
+  let (=<<) f p = bind p f
+  let (>|=) p f = map f p
+  let (=|<) = map
+  let (<&>) p p' = join [p; p']
+  let (<?>) p p' = choose [p; p']
+
+  include Let_syntax
+end
+include ( Infix : module type of Infix with module Let_syntax := Let_syntax.Let_syntax )
 
 module Syntax =
 struct

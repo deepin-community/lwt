@@ -1,6 +1,2 @@
-# See uscan(1) for format
-
-# Compulsory line, this is a version 3 file
-version=3
-
-https://github.com/ocsigen/lwt/releases .*/archive/([\d.]*)\.tar\.gz
+version=4
+https://github.com/ocsigen/lwt/tags .*/([\d.]+)\.tar\.gz
