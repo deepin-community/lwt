@@ -7,7 +7,7 @@ Subject: Disable page_size test
  1 file changed, 2 insertions(+)
 
 diff --git a/test/unix/test_lwt_bytes.ml b/test/unix/test_lwt_bytes.ml
-index 0bc62d8..3d5e397 100644
+index e29843c..e1bd7cd 100644
 --- a/test/unix/test_lwt_bytes.ml
 +++ b/test/unix/test_lwt_bytes.ml
 @@ -773,10 +773,12 @@ let suite = suite "lwt_bytes" [

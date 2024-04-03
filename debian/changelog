@@ -1,3 +1,15 @@
+lwt (5.7.0-1) unstable; urgency=medium
+
+  * New upstream release
+
+ -- Stéphane Glondu <glondu@debian.org>  Sun, 27 Aug 2023 21:32:54 +0200
+
+lwt (5.6.1-5) unstable; urgency=medium
+
+  * Use ocaml_dune DH buildsystem
+
+ -- Stéphane Glondu <glondu@debian.org>  Sun, 06 Aug 2023 08:41:43 +0200
+
 lwt (5.6.1-4) unstable; urgency=medium
 
   * Team upload.
