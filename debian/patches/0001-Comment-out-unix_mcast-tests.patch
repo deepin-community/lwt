@@ -9,7 +9,7 @@ environments.
  1 file changed, 2 insertions(+)
 
 diff --git a/test/unix/test_mcast.ml b/test/unix/test_mcast.ml
-index a5bcf40..abd8c9d 100644
+index dbdfd44..1f27075 100644
 --- a/test/unix/test_mcast.ml
 +++ b/test/unix/test_mcast.ml
 @@ -72,8 +72,10 @@ let test_mcast name join set_loop =

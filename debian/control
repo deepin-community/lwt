@@ -4,7 +4,7 @@ Maintainer: Debian OCaml Maintainers <debian-ocaml-maint@lists.debian.org>
 Uploaders: Stéphane Glondu <glondu@debian.org>
 Build-Depends:
  debhelper-compat (= 13),
- dh-ocaml,
+ dh-ocaml (>= 1.2.2),
  libev-dev,
  ocaml-findlib,
  ocaml-dune,
@@ -18,7 +18,7 @@ Build-Depends:
  libocplib-endian-ocaml-dev,
  libseq-ocaml-dev,
  ocaml-compiler-libs,
- ocaml-nox
+ ocaml
 Standards-Version: 4.6.2
 Rules-Requires-Root: no
 Section: ocaml

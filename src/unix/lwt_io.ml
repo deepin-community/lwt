@@ -533,8 +533,12 @@ let make :
     mode = mode;
     offset = 0L;
     typ =
-      Type_normal
-        (perform_io, fun pos cmd -> try seek pos cmd with e -> Lwt.fail e);
+      Type_normal (
+        perform_io,
+        fun pos cmd ->
+          try seek pos cmd
+          with e when Lwt.Exception_filter.run e -> Lwt.fail e
+    );
   } and wrapper = {
     state = Idle;
     channel = ch;
@@ -842,12 +846,12 @@ struct
         Lwt.return (Bytes.unsafe_to_string buf)
 
   let read_value ic =
-    let header = Bytes.create 20 in
-    unsafe_read_into_exactly ic header 0 20 >>= fun () ->
+    let header = Bytes.create Marshal.header_size in
+    unsafe_read_into_exactly ic header 0 Marshal.header_size >>= fun () ->
     let bsize = Marshal.data_size header 0 in
-    let buffer = Bytes.create (20 + bsize) in
-    Bytes.unsafe_blit header 0 buffer 0 20;
-    unsafe_read_into_exactly ic buffer 20 bsize >>= fun () ->
+    let buffer = Bytes.create (Marshal.header_size + bsize) in
+    Bytes.unsafe_blit header 0 buffer 0 Marshal.header_size;
+    unsafe_read_into_exactly ic buffer Marshal.header_size bsize >>= fun () ->
     Lwt.return (Marshal.from_bytes buffer 0)
 
   (* +---------------------------------------------------------------+
@@ -1504,7 +1508,7 @@ let rec delete_recursively directory =
   |> Lwt_stream.iter_s begin fun entry ->
     if entry = Filename.current_dir_name ||
        entry = Filename.parent_dir_name then
-      Lwt.return ()
+      Lwt.return_unit
     else
       let path = Filename.concat directory entry in
       Lwt_unix.lstat path >>= fun {Lwt_unix.st_kind; _} ->
